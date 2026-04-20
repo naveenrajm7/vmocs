@@ -70,8 +70,15 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
     os.makedirs(runtime_dir, exist_ok=True)
 
-    # Resolve the base image path
-    if template.image_dir:
+    # Detect snapshot: template.snapshot points to a snapshot dir
+    snap_dir = template.snapshot
+    using_snapshot = bool(snap_dir and os.path.isfile(
+        os.path.join(snap_dir, 'memory')))
+
+    # Resolve base image: prefer snapshot disk, then template image/image-dir
+    if using_snapshot:
+        base_image = os.path.join(snap_dir, 'disk.qcow2')
+    elif template.image_dir:
         import glob
         candidates = glob.glob(os.path.join(template.image_dir, '*.qcow2'))
         if not candidates:
@@ -86,8 +93,13 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     overlay = os.path.join(runtime_dir, 'disk.qcow2')
     VMImage.create_cow_overlay(base_image, overlay)
 
-    # 2. SSH keypair
-    key_path, pubkey = generate_ssh_keypair(runtime_dir)
+    # 2. SSH keypair — reuse snapshot key if restoring, else generate ephemeral
+    if using_snapshot:
+        key_path = os.path.join(snap_dir, 'id_ed25519')
+        with open(key_path + '.pub') as f:
+            pubkey = f.read().strip()
+    else:
+        key_path, pubkey = generate_ssh_keypair(runtime_dir)
 
     # 3. SSH port
     port_range = cfg.network.get('ssh-port-range', [60222, 60322])
@@ -98,6 +110,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
 
     # 4. Build QEMU cmdline
     ssh_user = template.ssh_user
+    snapshot_mem = os.path.join(snap_dir, 'memory') if using_snapshot else None
+
     cmd = build_qemu_cmdline(
         qemu_bin=qemu_bin,
         template=template,
@@ -109,6 +123,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
         ssh_port=ssh_port,
         qmp_socket=qmp_socket,
         ssh_user=ssh_user,
+        snapshot_mem=snapshot_mem,
     )
 
     # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
@@ -127,7 +142,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
         os.waitpid(qemu_pid, 0)
         raise HypervisorError('QEMU failed to start (QMP timeout)')
 
-    # Bind vCPUs if requested (pcocc:1698-1710) — skip in user-mode, no NUMA needed
+    # Snapshot restore: wait for incoming migration to finish, then cont (pcocc:1713-1723)
+    if using_snapshot:
+        while mon.query_status() == 'inmigrate':
+            time.sleep(1)
     mon.cont()
 
     # 7. Wait for SSH

@@ -25,6 +25,7 @@ TEMPLATE_SETTINGS = {
     'gpu':           (False, None,       True),   # 'full', 'sriov', or None
     'ssh-user':      (False, 'root',     True),
     'ssh-timeout':   (False, 120,        True),
+    'snapshot':      (False, None,       True),   # path to snapshot dir (memory + disk)
     'inherits':      (False, None,       False),
     'description':   (False, '',         False),
 }

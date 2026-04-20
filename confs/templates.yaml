@@ -10,3 +10,9 @@ base-ubuntu:
 saved-ubuntu:
   inherits: base-ubuntu
   image: /tmp/ubuntu-saved.qcow2
+
+# Fast-boot template: run 'vmocs snapshot create base-ubuntu /tmp/ubuntu-snap'
+# then uncomment snapshot: below to enable ~3-5s restore instead of full boot.
+snap-ubuntu:
+  inherits: base-ubuntu
+  snapshot: /tmp/ubuntu-snap

@@ -242,7 +242,8 @@ def _find_free_port(port_range):
 
 def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        disk_path, runtime_dir, ssh_pubkey,
-                       ssh_port, qmp_socket, ssh_user='root'):
+                       ssh_port, qmp_socket, ssh_user='root',
+                       snapshot_mem=None):
     """Build the full QEMU command line list.
 
     Args:
@@ -269,7 +270,11 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
         logging.warning('KVM not available, running without acceleration')
         cmd += ['-machine', f'type={machine}']
 
-    # Start paused — caller will send cont() after binding vCPUs
+    # Snapshot restore: incoming migration (pcocc:1337-1341)
+    if snapshot_mem:
+        cmd += ['-incoming', f'exec: lzop -dc {snapshot_mem}']
+
+    # Start paused — caller will send cont() after QMP handshake
     cmd += ['-S']
     cmd += ['-rtc', 'base=utc']
     cmd += ['-display', 'none']

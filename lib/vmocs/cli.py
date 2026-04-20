@@ -11,6 +11,7 @@ from . import __version__, VmocsError
 from .config import Config
 from .templates import TemplateConfig
 from .launch import launch_vm, teardown_vm
+from .snapshot import create_snapshot
 
 
 def _load(config_path=None):
@@ -61,6 +62,39 @@ def template_show(ctx, name):
         raise VmocsError(f"template '{name}' not found")
     for key, val in sorted(tpls[name].resolved().items()):
         click.echo(f'{key:<20} {val}')
+
+
+# ---------------------------------------------------------------------------
+# snapshot subgroup
+# ---------------------------------------------------------------------------
+
+@cli.group('snapshot')
+def snapshot_group():
+    """Create and manage VM snapshots for fast boot."""
+    pass
+
+
+@snapshot_group.command('create')
+@click.argument('template_name')
+@click.argument('snap_dir')
+@click.option('--cores', default=2, show_default=True, help='vCPUs for snapshot VM')
+@click.option('--memory', default=2048, show_default=True,
+              metavar='MB', help='RAM in MB for snapshot VM')
+@click.pass_context
+def snapshot_create(ctx, template_name, snap_dir, cores, memory):
+    """Boot TEMPLATE_NAME, wait for SSH, save memory + disk to SNAP_DIR.
+
+    The resulting snapshot directory can be referenced in templates.yaml
+    via the 'snapshot:' field to enable fast (~3-5s) VM restores.
+    """
+    cfg, tpls = _load(ctx.obj['config_path'])
+    if template_name not in tpls:
+        raise VmocsError(f"template '{template_name}' not found")
+    tpl = tpls[template_name]
+    click.echo(f'Booting {template_name!r} to create snapshot at {snap_dir!r} ...')
+    create_snapshot(cfg, tpl, snap_dir, cores=cores, memory_mb=memory)
+    click.echo(f'Snapshot ready at {snap_dir}')
+    click.echo(f'Add to templates.yaml:  snapshot: {snap_dir}')
 
 
 # ---------------------------------------------------------------------------

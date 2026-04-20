@@ -82,6 +82,18 @@ class QemuMonitor:
         self._check_error(data)
         return data['return']
 
+    def migrate_to_file(self, path):
+        """Start migration to a local file compressed via lzop (pcocc:1021-1028)."""
+        cmd = json.dumps({'execute': 'migrate',
+                          'arguments': {'uri': f'exec:lzop > {path}'}}) + '\n\n'
+        self._validate(cmd)
+
+    def query_migrate(self):
+        """Return migration status dict (status, ram, etc.) (pcocc:967-977)."""
+        data = self._exec_sync('{"execute": "query-migrate"}\n\n')
+        self._check_error(data)
+        return data['return']
+
     def close(self):
         """Signal the reader thread to exit."""
         try:

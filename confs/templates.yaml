@@ -1,0 +1,8 @@
+base-ubuntu:
+  image: /tmp/ubuntu-24.04.qcow2
+  machine-type: q35
+  disk-model: virtio
+  disk-cache: unsafe
+  mount-points: {}
+  ssh-user: ubuntu
+  ssh-timeout: 180

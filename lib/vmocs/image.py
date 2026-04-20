@@ -52,6 +52,23 @@ class VMImage:
         return data.get('full-backing-filename') or data.get('backing-filename')
 
     @staticmethod
+    def convert_standalone(overlay_path, dest_path):
+        """Flatten a COW overlay (with all user changes) into a new standalone qcow2.
+
+        The result has no backing-file dependency — safe to use as a new base image.
+        Adapted from pcocc VMImage.convert (Image.py:269-303).
+        """
+        if not os.path.isfile(overlay_path):
+            raise ImageError(f'overlay not found: {overlay_path}')
+        try:
+            subprocess.check_call(
+                ['qemu-img', 'convert', '-f', 'qcow2', '-O', 'qcow2',
+                 overlay_path, dest_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            raise ImageError(f'qemu-img convert failed: {e}')
+
+    @staticmethod
     def create_cow_overlay(base_path, overlay_path):
         """Create a qcow2 COW overlay backed by base_path.
 

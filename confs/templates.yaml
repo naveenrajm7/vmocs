@@ -6,3 +6,7 @@ base-ubuntu:
   mount-points: {}
   ssh-user: ubuntu
   ssh-timeout: 180
+
+saved-ubuntu:
+  inherits: base-ubuntu
+  image: /tmp/ubuntu-saved.qcow2

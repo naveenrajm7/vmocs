@@ -143,12 +143,23 @@ def vm_list(ctx):
 
 @cli.command()
 @click.argument('job_id', type=int)
+@click.option('--save', 'save_path', default=None, metavar='PATH',
+              help='Flatten VM disk (with all changes) into a new qcow2 image.')
 @click.pass_context
-def stop(ctx, job_id):
-    """Stop a running VM by JOB_ID."""
+def stop(ctx, job_id, save_path):
+    """Stop a running VM by JOB_ID.
+
+    Use --save PATH to capture any changes made inside the VM into a new
+    standalone qcow2 image. That image can then be used directly as a
+    template image for future jobs (--vm-save equivalent).
+    """
     cfg, _ = _load(ctx.obj['config_path'])
-    meta = teardown_vm(job_id, runtime_base=cfg.runtime_dir)
+    if save_path:
+        click.echo(f'Saving VM disk to {save_path} ...')
+    meta = teardown_vm(job_id, runtime_base=cfg.runtime_dir, save_path=save_path)
     click.echo(f'Stopped VM job_id={meta["job_id"]}')
+    if save_path:
+        click.echo(f'Saved  → {save_path}')
 
 
 def main():

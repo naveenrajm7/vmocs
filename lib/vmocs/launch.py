@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 
-from .error import HypervisorError
+from .error import HypervisorError, ImageError
 from .image import VMImage
 from .hypervisor import build_qemu_cmdline, _find_free_port
 from .monitor import wait_for_monitor
@@ -156,8 +156,59 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     return meta
 
 
-def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs'):
-    """Kill QEMU, remove COW overlay and runtime dir."""
+def _kill_qemu(pid, timeout=10):
+    """SIGTERM → wait → SIGKILL."""
+    try:
+        os.kill(pid, 15)
+        for _ in range(timeout):
+            time.sleep(1)
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+        os.kill(pid, 9)
+    except ProcessLookupError:
+        pass
+
+
+def _graceful_shutdown(qmp_socket, pid, timeout=60):
+    """Send ACPI powerdown via QMP so the guest flushes filesystems cleanly.
+
+    Falls back to SIGTERM if the QMP socket is gone or the guest doesn't
+    shut down within timeout seconds.
+    """
+    try:
+        from .monitor import QemuMonitor
+        mon = QemuMonitor(qmp_socket)
+        mon._validate('{"execute": "system_powerdown"}\n\n')
+        mon.close()
+    except Exception:
+        _kill_qemu(pid)
+        return
+
+    # Wait for QEMU to exit naturally (guest runs shutdown, syncs filesystems)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        time.sleep(1)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return  # QEMU exited cleanly
+
+    # Guest didn't shut down in time — force kill
+    _kill_qemu(pid)
+
+
+def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
+                save_path=None):
+    """Kill QEMU, optionally save disk state, then remove runtime dir.
+
+    Args:
+        save_path: If given, flatten the COW overlay into a new standalone
+                   qcow2 at this path before cleanup (--vm-save equivalent).
+                   Uses a graceful guest shutdown so the guest OS syncs
+                   its filesystems before we convert the overlay.
+    """
     if runtime_dir is None:
         runtime_dir = os.path.join(runtime_base, str(job_id))
 
@@ -169,19 +220,13 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs'):
         meta = json.load(f)
 
     pid = meta['pid']
-    # SIGTERM then SIGKILL
-    try:
-        os.kill(pid, 15)
-        for _ in range(10):
-            time.sleep(1)
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                break
-        else:
-            os.kill(pid, 9)
-    except ProcessLookupError:
-        pass
+
+    if save_path:
+        # Graceful ACPI shutdown so guest syncs filesystems before we convert
+        _graceful_shutdown(meta['qmp_socket'], pid, timeout=60)
+        VMImage.convert_standalone(meta['overlay'], save_path)
+    else:
+        _kill_qemu(pid)
 
     import shutil
     shutil.rmtree(runtime_dir, ignore_errors=True)

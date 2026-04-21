@@ -241,21 +241,23 @@ def _find_free_port(port_range):
 # ---------------------------------------------------------------------------
 
 def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
-                       disk_path, runtime_dir, ssh_pubkey,
-                       ssh_port, qmp_socket, ssh_user='root',
+                       disk_path, runtime_dir,
+                       ssh_port, qmp_socket,
+                       cloud_init_iso=None,
                        snapshot_mem=None):
     """Build the full QEMU command line list.
 
     Args:
-        qemu_bin:    path to qemu-system-x86_64
-        template:    resolved Template object
-        cores:       number of vCPUs
-        memory_mb:   RAM in MB
-        disk_path:   path to COW overlay (primary disk)
-        runtime_dir: per-job runtime directory
-        ssh_pubkey:  ED25519 public key string for cloud-init injection
-        ssh_port:    host port to forward to guest :22 (user-mode net)
-        qmp_socket:  path for QMP Unix socket
+        qemu_bin:       path to qemu-system-x86_64
+        template:       resolved Template object
+        cores:          number of vCPUs
+        memory_mb:      RAM in MB
+        disk_path:      path to COW overlay (primary disk)
+        runtime_dir:    per-job runtime directory
+        ssh_port:       host port to forward to guest :22 (user-mode net)
+        qmp_socket:     path for QMP Unix socket
+        cloud_init_iso: path to cloud-init ISO, or None for vagrant boot mode
+        snapshot_mem:   path to lzop-compressed memory snapshot, or None
 
     Adapted from pcocc Hypervisor.py:1328-1646.
     """
@@ -287,10 +289,10 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     cache = template.disk_cache
     cmd += block_cmdline(model, disk_path, 'drive0', 0, cache)
 
-    # Cloud-init ISO injected as SCSI cdrom
-    iso = _make_cloud_init_iso(runtime_dir, ssh_pubkey, ssh_user=ssh_user)
-    cmd += ['-drive', f'id=cdrom0,if=none,format=raw,readonly=on,file={iso}']
-    cmd += ['-device', 'scsi-cd,bus=scsi0.0,drive=cdrom0']
+    # Cloud-init ISO injected as SCSI cdrom (cloud-init boot mode only)
+    if cloud_init_iso:
+        cmd += ['-drive', f'id=cdrom0,if=none,format=raw,readonly=on,file={cloud_init_iso}']
+        cmd += ['-device', 'scsi-cd,bus=scsi0.0,drive=cdrom0']
 
     # Direct kernel boot (optional)
     if template.kernel:

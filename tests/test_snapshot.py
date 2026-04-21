@@ -38,7 +38,6 @@ def test_cmdline_no_snapshot(tmp_path, cow_img):
         template=FakeTemplate(),
         cores=2, memory_mb=1024,
         disk_path=cow_img, runtime_dir=runtime,
-        ssh_pubkey='ssh-ed25519 AAAA test',
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
     )
@@ -56,7 +55,6 @@ def test_cmdline_with_snapshot(tmp_path, cow_img):
         template=FakeTemplate(),
         cores=2, memory_mb=1024,
         disk_path=cow_img, runtime_dir=runtime,
-        ssh_pubkey='ssh-ed25519 AAAA test',
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
         snapshot_mem=mem_path,

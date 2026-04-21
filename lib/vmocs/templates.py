@@ -19,6 +19,7 @@ TEMPLATE_SETTINGS = {
     'custom-args':   (False, [],         True),
     'qemu-bin':      (False, None,       True),
     'mount-points':  (False, {},         True),
+    'boot-mode':     (False, 'cloud-init', True),  # 'cloud-init' or 'vagrant'
     'user-data':     (False, None,       True),
     'bind-vcpus':    (False, False,      True),
     'kernel':        (False, None,       True),

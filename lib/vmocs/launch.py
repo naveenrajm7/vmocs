@@ -14,7 +14,8 @@ import time
 
 from .error import HypervisorError, ImageError
 from .image import VMImage
-from .hypervisor import build_qemu_cmdline, _find_free_port
+from .hypervisor import build_qemu_cmdline, _make_cloud_init_iso, _find_free_port
+from .keys import VAGRANT_KEY
 from .monitor import wait_for_monitor
 
 
@@ -27,6 +28,30 @@ def generate_ssh_keypair(runtime_dir):
     with open(key_path + '.pub') as f:
         pubkey = f.read().strip()
     return key_path, pubkey
+
+
+def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
+    """SSH in with the Vagrant insecure key and replace it with an ephemeral pubkey.
+
+    Polls until SSH accepts connections, then overwrites authorized_keys so the
+    well-known insecure key is immediately revoked.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        ret = subprocess.call(
+            ['ssh',
+             '-i', VAGRANT_KEY,
+             '-o', 'StrictHostKeyChecking=no',
+             '-o', 'UserKnownHostsFile=/dev/null',
+             '-o', 'ConnectTimeout=2',
+             '-p', str(port),
+             f'{ssh_user}@{host}',
+             f"printf '%s\\n' '{pubkey}' > ~/.ssh/authorized_keys"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if ret == 0:
+            return
+        time.sleep(2)
+    raise HypervisorError(f'vagrant key rotation timed out after {timeout}s')
 
 
 def wait_for_ssh(host, port, key_path, timeout, ssh_user='root'):
@@ -93,13 +118,25 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     overlay = os.path.join(runtime_dir, 'disk.qcow2')
     VMImage.create_cow_overlay(base_image, overlay)
 
-    # 2. SSH keypair — reuse snapshot key if restoring, else generate ephemeral
-    if using_snapshot:
+    # 2. SSH keypair — always ephemeral; snapshots reuse their pre-burned key
+    boot_mode = template.boot_mode
+    ssh_user = template.ssh_user
+    snapshot_mem = os.path.join(snap_dir, 'memory') if using_snapshot else None
+
+    if using_snapshot and boot_mode == 'cloud-init':
         key_path = os.path.join(snap_dir, 'id_ed25519')
         with open(key_path + '.pub') as f:
             pubkey = f.read().strip()
     else:
         key_path, pubkey = generate_ssh_keypair(runtime_dir)
+
+    # boot-mode only decides how the key reaches the VM
+    if boot_mode == 'cloud-init':
+        cloud_init_iso = _make_cloud_init_iso(runtime_dir, pubkey, ssh_user=ssh_user)
+    elif boot_mode == 'vagrant':
+        cloud_init_iso = None   # key is rotated post-boot via _rotate_vagrant_key
+    else:
+        raise HypervisorError(f'unknown boot-mode: {boot_mode!r}')
 
     # 3. SSH port
     port_range = cfg.network.get('ssh-port-range', [60222, 60322])
@@ -109,9 +146,6 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     qemu_bin = template.qemu_bin or cfg.qemu_bin
 
     # 4. Build QEMU cmdline
-    ssh_user = template.ssh_user
-    snapshot_mem = os.path.join(snap_dir, 'memory') if using_snapshot else None
-
     cmd = build_qemu_cmdline(
         qemu_bin=qemu_bin,
         template=template,
@@ -119,10 +153,9 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
         memory_mb=memory_mb,
         disk_path=overlay,
         runtime_dir=runtime_dir,
-        ssh_pubkey=pubkey,
         ssh_port=ssh_port,
         qmp_socket=qmp_socket,
-        ssh_user=ssh_user,
+        cloud_init_iso=cloud_init_iso,
         snapshot_mem=snapshot_mem,
     )
 
@@ -148,9 +181,12 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
             time.sleep(1)
     mon.cont()
 
-    # 7. Wait for SSH
+    # Vagrant: SSH in with the well-known insecure key, replace it with our ephemeral key
     ssh_timeout = template.ssh_timeout
-    ssh_user = template.ssh_user
+    if boot_mode == 'vagrant':
+        _rotate_vagrant_key('127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user)
+
+    # 7. Wait for SSH (ephemeral key for both modes)
     if not wait_for_ssh('127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user):
         mon.quit()
         os.waitpid(qemu_pid, 0)
@@ -160,6 +196,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     meta = {
         'job_id': job_id,
         'pid': qemu_pid,
+        'boot_mode': boot_mode,
         'ssh_port': ssh_port,
         'ssh_user': ssh_user,
         'key_path': key_path,

@@ -16,3 +16,22 @@ saved-ubuntu:
 snap-ubuntu:
   inherits: base-ubuntu
   snapshot: /tmp/ubuntu-snap
+
+# Vagrant boot mode: image must have a 'vagrant' user with the Vagrant insecure
+# public key pre-installed.  No cloud-init support required — works for Windows,
+# BSD, or any custom appliance built to the Vagrant convention.
+windows-vm:
+  image: /tmp/win11.qcow2
+  boot-mode: vagrant
+  ssh-user: vagrant
+  ssh-timeout: 300
+  machine-type: q35
+  disk-model: virtio
+
+debian-vagrant:
+  image: /home/AMD/nmuthura/vms/extracted/box.img
+  boot-mode: vagrant
+  ssh-user: vagrant
+  ssh-timeout: 120
+  machine-type: q35
+  disk-model: virtio

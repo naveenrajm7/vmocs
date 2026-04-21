@@ -55,7 +55,6 @@ def test_build_qemu_cmdline_structure(tmp_path, cow_img):
         memory_mb=1024,
         disk_path=cow_img,
         runtime_dir=runtime,
-        ssh_pubkey='ssh-ed25519 AAAA test',
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
     )
@@ -66,3 +65,25 @@ def test_build_qemu_cmdline_structure(tmp_path, cow_img):
     assert any('hostfwd=tcp:127.0.0.1:60222-:22' in a for a in cmd)
     assert any('unix:' in a and 'qmp.sock' in a for a in cmd)
     assert '-S' in cmd
+    # vagrant mode (no cloud_init_iso): no cdrom should appear
+    assert 'cdrom0' not in ' '.join(cmd)
+
+
+def test_build_qemu_cmdline_with_cloud_init_iso(tmp_path, cow_img):
+    runtime = str(tmp_path / 'runtime2')
+    os.makedirs(runtime)
+    fake_iso = str(tmp_path / 'cloud-init.iso')
+    open(fake_iso, 'w').close()
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        cloud_init_iso=fake_iso,
+    )
+    assert 'cdrom0' in ' '.join(cmd)
+    assert fake_iso in ' '.join(cmd)

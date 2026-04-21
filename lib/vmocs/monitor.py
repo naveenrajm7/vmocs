@@ -106,6 +106,8 @@ class QemuMonitor:
     # ------------------------------------------------------------------
 
     def _handle_hello(self, data):
+        if data is None:
+            raise HypervisorError('QMP socket closed before hello')
         if 'QMP' not in data:
             raise HypervisorError(f'unexpected first QMP message: {data}')
         logging.debug('QMP: connected to QEMU monitor')

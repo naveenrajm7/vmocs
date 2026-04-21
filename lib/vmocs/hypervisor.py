@@ -172,10 +172,36 @@ def _make_cloud_init_iso(runtime_dir, ssh_pubkey, hostname='vmocs', ssh_user='ro
 # Mount points — adapted from pcocc Hypervisor.py:1897-1948
 # ---------------------------------------------------------------------------
 
+_VIRTIOFSD_CANDIDATES = [
+    '/usr/libexec/virtiofsd',
+    '/usr/lib/qemu/virtiofsd',
+]
+
+def _find_virtiofsd():
+    """Return path to virtiofsd binary, checking known locations then PATH."""
+    for path in _VIRTIOFSD_CANDIDATES:
+        if os.path.isfile(path):
+            return path
+    found = shutil.which('virtiofsd')
+    if found:
+        return found
+    raise HypervisorError(
+        f'virtiofsd not found; checked {_VIRTIOFSD_CANDIDATES}')
+
+
+def _has_virtiofs(mount_points):
+    """Return True if any mount point uses virtio-fs."""
+    for opts in mount_points.values():
+        if isinstance(opts, str):
+            opts = {'path': opts}
+        if opts.get('type') == 'virtio-fs':
+            return True
+    return False
+
+
 def _mount_cmdline(mount_points, runtime_dir):
     """Build 9p/virtiofs args for each mount point."""
     cmd = []
-    virtiofsd_procs = []
 
     for i, (tag, opts) in enumerate(mount_points.items()):
         if isinstance(opts, str):
@@ -197,12 +223,11 @@ def _mount_cmdline(mount_points, runtime_dir):
                 raise HypervisorError('read-only mounts not supported with virtio-fs')
             sock = os.path.join(runtime_dir, f'virtiofs_{i}.sock')
             p = subprocess.Popen(
-                ['virtiofsd', '--rlimit-nofile', '0',
-                 '--socket-path', sock, '--sandbox', 'none',
+                [_find_virtiofsd(), '--rlimit-nofile', '0',
+                 '--socket-path', sock, '--sandbox', 'namespace',
                  '--shared-dir', host_path],
                 close_fds=True)
             atexit.register(_try_kill, p)
-            virtiofsd_procs.append(p)
             cmd += ['-chardev', f'socket,id=char_fs_{i},path={sock}']
             cmd += ['-device',
                     f'vhost-user-fs-pci,queue-size=1024,chardev=char_fs_{i},tag={tag}']
@@ -302,8 +327,15 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     else:
         cmd += ['-boot', 'order=cd']
 
-    # Memory
-    cmd += ['-m', str(memory_mb)]
+    # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486)
+    mount_points = template.mount_points or {}
+    if _has_virtiofs(mount_points):
+        cmd += ['-object',
+                f'memory-backend-file,id=mem,size={memory_mb}M,'
+                f'mem-path=/dev/shm,share=on']
+        cmd += ['-numa', 'node,memdev=mem']
+    else:
+        cmd += ['-m', str(memory_mb)]
 
     # CPU topology
     cmd += ['-smp', f'threads=1,cores=1,sockets={cores}']
@@ -314,7 +346,6 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     cmd += ['-device', 'virtio-net-pci,netdev=net0']
 
     # Mount points
-    mount_points = template.mount_points or {}
     if mount_points:
         cmd += _mount_cmdline(mount_points, runtime_dir)
 

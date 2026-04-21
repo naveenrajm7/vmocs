@@ -3,7 +3,10 @@ base-ubuntu:
   machine-type: q35
   disk-model: virtio
   disk-cache: unsafe
-  mount-points: {}
+  mount-points:
+    nmuthura:
+      path: /home/AMD/nmuthura
+      type: virtio-fs
   ssh-user: ubuntu
   ssh-timeout: 180
 

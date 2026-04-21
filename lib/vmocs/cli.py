@@ -3,14 +3,20 @@
 
 import json
 import os
+import shutil
+import signal
+import subprocess
 import sys
+import threading
+import time
 
 import click
 
 from . import __version__, VmocsError
 from .config import Config
 from .templates import TemplateConfig
-from .launch import launch_vm, teardown_vm
+from .launch import launch_vm, teardown_vm, _graceful_shutdown
+from .monitor import QemuMonitor
 from .snapshot import create_snapshot
 
 
@@ -128,8 +134,54 @@ def launch(ctx, template_name, cores, memory, job_id, open_ssh):
                f'-p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')
 
+    qemu_pid    = meta['pid']
+    qmp_socket  = meta['qmp_socket']
+    runtime_dir = meta['runtime_dir']
+
+    # pcocc-style SIGTERM handling (mirrors Hypervisor.py:1840-1864):
+    #   Attempt 1 & 2: send ACPI powerdown, reschedule SIGTERM in 10s if VM
+    #                  does not shut down on its own.
+    #   Attempt 3:     send QMP quit to force QEMU exit immediately.
+    # waitpid() is restarted automatically after each signal (PEP 475), so
+    # the main thread keeps waiting while the timer thread reschedules signals.
+    _attempts = [0]
+    _timer    = [None]
+
+    def _cancel_timer():
+        if _timer[0]:
+            _timer[0].cancel()
+            _timer[0] = None
+
+    def _send_qmp(fn):
+        """Run a QMP command in a daemon thread so the signal handler returns fast."""
+        def _run():
+            try:
+                mon = QemuMonitor(qmp_socket)
+                fn(mon)
+                mon.close()
+            except Exception:
+                pass
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_signal(signum, frame):
+        _cancel_timer()
+        _attempts[0] += 1
+        if _attempts[0] < 3:
+            _send_qmp(lambda m: m._validate('{"execute": "system_powerdown"}\n\n'))
+            _timer[0] = threading.Timer(10, os.kill, [os.getpid(), signal.SIGTERM])
+            _timer[0].daemon = True
+            _timer[0].start()
+        else:
+            _send_qmp(lambda m: m.quit())
+            # Belt-and-suspenders: if QMP fails, force kill after 5s
+            threading.Timer(5, os.kill, [qemu_pid, 9]).start()
+
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+
     if open_ssh:
-        os.execvp('ssh', [
+        # subprocess (not execvp) so we return here when the session ends
+        subprocess.call([
             'ssh',
             '-i', meta['key_path'],
             '-o', 'StrictHostKeyChecking=no',
@@ -137,6 +189,18 @@ def launch(ctx, template_name, cores, memory, job_id, open_ssh):
             '-p', str(meta['ssh_port']),
             f'{meta["ssh_user"]}@127.0.0.1',
         ])
+        # User exited the SSH session — shut the VM down cleanly
+        _graceful_shutdown(qmp_socket, qemu_pid)
+        sys.exit(0)
+
+    # Block until QEMU exits: Slurm SIGTERM, vmocs stop, or guest poweroff.
+    try:
+        os.waitpid(qemu_pid, 0)
+    except ChildProcessError:
+        pass
+    finally:
+        _cancel_timer()
+        shutil.rmtree(runtime_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

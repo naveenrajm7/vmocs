@@ -180,6 +180,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
         while mon.query_status() == 'inmigrate':
             time.sleep(1)
     mon.cont()
+    mon.close()  # Release QMP connection — QEMU serves one client at a time
 
     # Vagrant: SSH in with the well-known insecure key, replace it with our ephemeral key
     ssh_timeout = template.ssh_timeout
@@ -188,7 +189,9 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
 
     # 7. Wait for SSH (ephemeral key for both modes)
     if not wait_for_ssh('127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user):
+        mon = wait_for_monitor(qmp_socket, timeout=10)
         mon.quit()
+        mon.close()
         os.waitpid(qemu_pid, 0)
         raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
 

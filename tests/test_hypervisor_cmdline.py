@@ -151,7 +151,7 @@ def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
     )
-    assert '-m' not in cmd
+    assert '-m' in cmd
     assert any('memory-backend-file' in a and '1024M' in a and '/dev/shm' in a
                for a in cmd)
     assert '-numa' in cmd

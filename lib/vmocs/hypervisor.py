@@ -330,6 +330,7 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486)
     mount_points = template.mount_points or {}
     if _has_virtiofs(mount_points):
+        cmd += ['-m', str(memory_mb)]
         cmd += ['-object',
                 f'memory-backend-file,id=mem,size={memory_mb}M,'
                 f'mem-path=/dev/shm,share=on']

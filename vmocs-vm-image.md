@@ -458,3 +458,91 @@ vmocs snapshot create rocm-dev --memory 8192 --cores 4
 - **`templates.py`**: Add `image-dir`, `extra-disks`, `snapshot` fields. Add manifest loading logic.
 - **`image.py`**: Add `create_snapshot()` helper. Add `parse_manifest(dir_path) -> dict`.
 - **`cli.py`**: Add `vmocs image list|show|verify|import|rm` and `vmocs snapshot create` commands.
+
+---
+
+## pcocc vs vmocs: Image Management Comparison
+
+*Analysis recorded April 2026 — basis for future vmocs image versioning work.*
+
+### What is the same
+
+Both projects use the exact same COW overlay strategy at the QEMU level:
+
+```bash
+# pcocc Hypervisor.py:1380-1384
+# vmocs image.py:create_cow_overlay
+qemu-img create -f qcow2 -F qcow2 -b <base_image> <overlay>
+```
+
+QEMU always receives the overlay path, never the base image. The base is always
+read-only. On job teardown the overlay is deleted. This is identical in both.
+
+### Where pcocc goes further
+
+| Concern | pcocc | vmocs (current) |
+|---|---|---|
+| Image identity | URI: `[repo]:name[@revision]` e.g. `myrepo:rocm-dev@5` | Plain file path in template |
+| Revisions | Full version history per image; each save creates a new numbered revision | None — `vmocs stop --save` overwrites a single file |
+| Revision types | **Layer** (incremental, delta over previous) or **Full** (standalone) | Full only (flattened qcow2) |
+| Image store | Content-addressed object store with SHA256 blob tracking | Directory of plain files |
+| Image locking | MMP ref-counting lock per image — prevents two VMs from writing the same persistent disk | None |
+| Remote fetch | Pulls from Docker/OCI registries via skopeo, caches locally | No |
+| Image caching | SHA256-keyed cache; invalidated when content changes | No |
+
+### Why locking matters
+
+pcocc locks base images before booting (`Hypervisor.py:1096-1152`). When two
+jobs start from the same base image simultaneously, they each get their own
+COW overlay — but pcocc tracks a ref-count so a base image cannot be deleted or
+overwritten while any VM is referencing it. vmocs has no equivalent; deleting
+or replacing a base image while a VM is running will silently corrupt that VM's
+reads once the COW overlay falls through to the (now-changed) backing file.
+
+### Roadmap: image versioning for vmocs
+
+The following can be added incrementally without breaking existing templates:
+
+#### Phase 1 — Revision tracking (no store, just files)
+
+Add a revision suffix to the `vmocs stop --save` output:
+```
+/shared/vmocs/images/rocm-dev/
+  os-disk.qcow2          ← current (symlink)
+  os-disk.r1.qcow2
+  os-disk.r2.qcow2
+  os-disk.r3.qcow2       ← latest
+```
+
+`vmocs image revisions <name>` lists them. Templates can pin a revision:
+```yaml
+rocm-dev:
+  image: /shared/vmocs/images/rocm-dev/os-disk.r2.qcow2
+```
+
+#### Phase 2 — Image locking
+
+Before creating the COW overlay, write a lock file:
+```
+/tmp/vmocs-locks/<normalized_image_path>.lock
+```
+containing `{ job_id, pid, timestamp }`. Increment a ref-count on open,
+decrement on teardown. Refuse to delete or overwrite an image with ref-count > 0.
+This mirrors pcocc's MMP mechanism (`Hypervisor.py:1096-1152`) but without etcd —
+a local JSON file per image is sufficient for single-node use.
+
+#### Phase 3 — Content-addressed store
+
+Move images into a store keyed by SHA256 of the qcow2 content, matching pcocc's
+`ObjectStore.py`. This enables deduplication across revisions (delta layers share
+unchanged blocks) and makes remote distribution via OCI registries natural (see
+the OCI section above).
+
+#### Phase 4 — Remote fetch
+
+Integrate skopeo (or oras for non-container images) to pull image revisions from
+a registry, matching pcocc's `Image.py:683-763`. Compute nodes cache pulls under
+`/var/cache/vmocs/`.
+
+Phases 1 and 2 are low-risk additions that can be done without changing the
+template format or breaking existing workflows.

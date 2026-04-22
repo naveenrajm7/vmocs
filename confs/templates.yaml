@@ -14,6 +14,11 @@ saved-ubuntu:
   inherits: base-ubuntu
   image: /tmp/ubuntu-saved.qcow2
 
+base-ubuntu-uefi:
+  inherits: base-ubuntu
+  firmware: /usr/share/OVMF/OVMF_CODE_4M.fd
+  firmware-vars-template: /usr/share/OVMF/OVMF_VARS_4M.fd
+
 # Fast-boot template: run 'vmocs snapshot create base-ubuntu /tmp/ubuntu-snap'
 # then uncomment snapshot: below to enable ~3-5s restore instead of full boot.
 snap-ubuntu:
@@ -31,6 +36,39 @@ windows-vm:
   machine-type: q35
   disk-model: virtio
 
+windows-packer:
+  description: Windows 11 AMD driver build — UEFI + Secure Boot + Hyper-V + TPM 2.0 (GPU passthrough excluded)
+  image: /vms/packer/base_build/base-win11-amd-driver.qcow2
+  machine-type: pc-q35-8.2
+  disk-model: virtio-scsi
+  disk-cache: writeback
+  boot-mode: vagrant
+  ssh-user: vagrant
+  ssh-timeout: 600
+  firmware: /usr/share/OVMF/OVMF_CODE_4M.ms.fd
+  firmware-vars-template: /usr/share/OVMF/OVMF_VARS_4M.ms.fd
+  display: vnc
+  vnc-port: 5910
+  clock-offset: localtime
+  hyperv: true
+  smm: true
+  tpm: true
+  insert-key: false
+  ssh-key: /home/AMD/nmuthura/.ssh/id_ed25519
+  pci-root-port: true
+  custom-args:
+    - -no-shutdown
+    - -device
+    - qemu-xhci,id=usb
+    - -device
+    - usb-tablet,bus=usb.0
+    - -smbios
+    - type=0,vendor="American Megatrends Inc.",version="5.12",date="04/01/2024"
+    - -smbios
+    - type=1,manufacturer="Dell Inc.",product="PowerEdge R750",version="1.0",serial="DL1234XTX"
+    - -smbios
+    - type=2,manufacturer="Dell Inc.",product="PowerEdge R750"
+
 debian-vagrant:
   image: /home/AMD/nmuthura/vms/extracted/box.img
   boot-mode: vagrant
@@ -38,3 +76,8 @@ debian-vagrant:
   ssh-timeout: 120
   machine-type: q35
   disk-model: virtio
+
+debian-vagrant-uefi:
+  inherits: debian-vagrant
+  firmware: /usr/share/OVMF/OVMF_CODE_4M.fd
+  firmware-vars-template: /usr/share/OVMF/OVMF_VARS_4M.fd

@@ -8,6 +8,7 @@
 import json
 import logging
 import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -31,50 +32,50 @@ def generate_ssh_keypair(runtime_dir):
 
 
 def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
-    """SSH in with the Vagrant insecure key and replace it with an ephemeral pubkey.
+    """Upload ephemeral pubkey via scp, revoking the well-known Vagrant insecure key.
 
-    Polls until SSH accepts connections, then overwrites authorized_keys so the
-    well-known insecure key is immediately revoked.
+    Uses scp (no remote shell command) so it works on Linux and Windows guests.
+    Polls until scp succeeds or timeout expires.
     """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        ret = subprocess.call(
-            ['ssh',
-             '-i', VAGRANT_KEY,
-             '-o', 'StrictHostKeyChecking=no',
-             '-o', 'UserKnownHostsFile=/dev/null',
-             '-o', 'ConnectTimeout=2',
-             '-p', str(port),
-             f'{ssh_user}@{host}',
-             f"printf '%s\\n' '{pubkey}' > ~/.ssh/authorized_keys"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if ret == 0:
-            return
-        time.sleep(2)
-    raise HypervisorError(f'vagrant key rotation timed out after {timeout}s')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.pub', delete=False) as f:
+        f.write(pubkey + '\n')
+        tmp_pub = f.name
+    try:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            ret = subprocess.call(
+                ['scp',
+                 '-i', VAGRANT_KEY,
+                 '-o', 'StrictHostKeyChecking=no',
+                 '-o', 'UserKnownHostsFile=/dev/null',
+                 '-o', 'ConnectTimeout=2',
+                 '-P', str(port),
+                 tmp_pub,
+                 f'{ssh_user}@{host}:.ssh/authorized_keys'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if ret == 0:
+                return
+            time.sleep(2)
+        raise HypervisorError(f'vagrant key rotation timed out after {timeout}s')
+    finally:
+        os.unlink(tmp_pub)
 
 
 def wait_for_ssh(host, port, key_path, timeout, ssh_user='root'):
-    """Poll SSH until the VM accepts connections. Return True on success."""
+    """Poll until the SSH daemon serves a banner. Works for Linux and Windows guests."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        ret = subprocess.call(
-            ['ssh',
-             '-i', key_path,
-             '-o', 'StrictHostKeyChecking=no',
-             '-o', 'UserKnownHostsFile=/dev/null',
-             '-o', f'ConnectTimeout=2',
-             '-p', str(port),
-             f'{ssh_user}@{host}',
-             'true'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if ret == 0:
-            return True
+        try:
+            with socket.create_connection((host, port), timeout=2) as s:
+                if s.recv(256).startswith(b'SSH-'):
+                    return True
+        except OSError:
+            pass
         time.sleep(2)
     return False
 
 
-def launch_vm(cfg, template, cores, memory_mb, job_id=None):
+def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
     """
     Launch a VM and wait for SSH. Returns a dict with runtime metadata.
 
@@ -123,20 +124,30 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     ssh_user = template.ssh_user
     snapshot_mem = os.path.join(snap_dir, 'memory') if using_snapshot else None
 
-    if using_snapshot and boot_mode == 'cloud-init':
+    # boot-mode + insert-key decide how (or whether) the key reaches the VM
+    insert_key = template.insert_key
+    pubkey = None
+
+    if not insert_key:
+        # Mirrors Vagrant's config.ssh.insert_key = false:
+        # use the pre-installed key from the image, no ephemeral keypair needed.
+        key_path = template.ssh_key  # None is fine — user relies on their own SSH config
+        cloud_init_iso = None
+    elif using_snapshot and boot_mode == 'cloud-init':
         key_path = os.path.join(snap_dir, 'id_ed25519')
         with open(key_path + '.pub') as f:
             pubkey = f.read().strip()
+        cloud_init_iso = None  # set below
     else:
         key_path, pubkey = generate_ssh_keypair(runtime_dir)
 
-    # boot-mode only decides how the key reaches the VM
-    if boot_mode == 'cloud-init':
-        cloud_init_iso = _make_cloud_init_iso(runtime_dir, pubkey, ssh_user=ssh_user)
-    elif boot_mode == 'vagrant':
-        cloud_init_iso = None   # key is rotated post-boot via _rotate_vagrant_key
-    else:
-        raise HypervisorError(f'unknown boot-mode: {boot_mode!r}')
+    if insert_key:
+        if boot_mode == 'cloud-init':
+            cloud_init_iso = _make_cloud_init_iso(runtime_dir, pubkey, ssh_user=ssh_user)
+        elif boot_mode == 'vagrant':
+            cloud_init_iso = None   # key is rotated post-boot via _rotate_vagrant_key
+        else:
+            raise HypervisorError(f'unknown boot-mode: {boot_mode!r}')
 
     # 3. SSH port
     port_range = cfg.network.get('ssh-port-range', [60222, 60322])
@@ -144,6 +155,17 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
 
     qmp_socket = os.path.join(runtime_dir, 'qmp.sock')
     qemu_bin = template.qemu_bin or cfg.qemu_bin
+
+    # UEFI NVRAM: copy vars template into runtime_dir so each job gets an isolated store
+    firmware_vars = None
+    if template.firmware:
+        vars_template = template.firmware_vars_template
+        if not vars_template:
+            raise HypervisorError(
+                f"template '{template.name}' sets 'firmware' but has no 'firmware-vars-template'")
+        import shutil
+        firmware_vars = os.path.join(runtime_dir, 'nvram.fd')
+        shutil.copy2(vars_template, firmware_vars)
 
     # 4. Build QEMU cmdline
     cmd = build_qemu_cmdline(
@@ -157,6 +179,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
         qmp_socket=qmp_socket,
         cloud_init_iso=cloud_init_iso,
         snapshot_mem=snapshot_mem,
+        firmware_vars=firmware_vars,
+        pci_devices=pci_devices,
     )
 
     # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
@@ -183,8 +207,9 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None):
     mon.close()  # Release QMP connection — QEMU serves one client at a time
 
     # Vagrant: SSH in with the well-known insecure key, replace it with our ephemeral key
+    # Skipped when insert-key=false (pre-installed key is used as-is)
     ssh_timeout = template.ssh_timeout
-    if boot_mode == 'vagrant':
+    if boot_mode == 'vagrant' and insert_key:
         _rotate_vagrant_key('127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user)
 
     # 7. Wait for SSH (ephemeral key for both modes)

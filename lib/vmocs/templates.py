@@ -26,8 +26,19 @@ TEMPLATE_SETTINGS = {
     'gpu':           (False, None,       True),   # 'full', 'sriov', or None
     'ssh-user':      (False, 'root',     True),
     'ssh-timeout':   (False, 120,        True),
-    'snapshot':      (False, None,       True),   # path to snapshot dir (memory + disk)
-    'inherits':      (False, None,       False),
+    'snapshot':               (False, None,    True),   # path to snapshot dir (memory + disk)
+    'firmware':               (False, None,    True),   # path to OVMF_CODE_*.fd; None = BIOS
+    'firmware-vars-template': (False, None,    True),   # path to OVMF_VARS_*.fd to copy per-job
+    'display':                (False, 'none',  True),   # 'none' or 'vnc'
+    'vnc-port':               (False, None,    True),   # explicit VNC port; auto if None
+    'clock-offset':           (False, 'utc',   True),   # 'utc' or 'localtime' (Windows)
+    'hyperv':                 (False, False,   True),   # Hyper-V enlightenments + kvm=off
+    'smm':                    (False, False,   True),   # smm=on for Secure Boot
+    'tpm':                    (False, False,   True),   # TPM 2.0 via swtpm
+    'insert-key':             (False, True,    True),   # False = skip key rotation (Vagrant insert_key=false)
+    'ssh-key':                (False, None,    True),   # private key path when insert-key=false
+    'pci-root-port':          (False, False,   True),   # True = each PCI passthrough device gets its own pcie-root-port (required for AMD GPUs)
+    'inherits':               (False, None,    False),
     'description':   (False, '',         False),
 }
 

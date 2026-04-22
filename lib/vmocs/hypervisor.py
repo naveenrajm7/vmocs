@@ -122,6 +122,40 @@ def block_cmdline(model, path, name, index, cache, serial=None):
 
 
 # ---------------------------------------------------------------------------
+# TPM 2.0 via swtpm — started as a sidecar before QEMU
+# ---------------------------------------------------------------------------
+
+_SWTPM = '/usr/bin/swtpm'
+
+
+def _tpm_cmdline(runtime_dir):
+    """Start swtpm as an orphaned daemon (double-fork) so it survives the
+    vmocs process exiting in --detach mode, then return QEMU tpm args."""
+    tpm_dir = os.path.join(runtime_dir, 'tpm')
+    tpm_sock = os.path.join(runtime_dir, 'tpm.sock')
+    os.makedirs(tpm_dir)
+    # start_new_session=True puts swtpm in its own session so it survives the
+    # vmocs process exiting in --detach mode (no atexit kill, no SIGHUP).
+    subprocess.Popen(
+        [_SWTPM, 'socket',
+         '--tpmstate', f'dir={tpm_dir}',
+         '--ctrl', f'type=unixio,path={tpm_sock}',
+         '--tpm2'],
+        close_fds=True, start_new_session=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.monotonic() + 10
+    while not os.path.exists(tpm_sock):
+        if time.monotonic() > deadline:
+            raise HypervisorError('swtpm failed to start (socket timeout)')
+        time.sleep(0.1)
+    return [
+        '-chardev', f'socket,id=chrtpm,path={tpm_sock}',
+        '-tpmdev', 'emulator,id=tpm0,chardev=chrtpm',
+        '-device', 'tpm-tis,tpmdev=tpm0',
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Cloud-init ISO — adapted from pcocc Hypervisor.py:1579-1646
 # ---------------------------------------------------------------------------
 
@@ -269,7 +303,9 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        disk_path, runtime_dir,
                        ssh_port, qmp_socket,
                        cloud_init_iso=None,
-                       snapshot_mem=None):
+                       snapshot_mem=None,
+                       firmware_vars=None,
+                       pci_devices=()):
     """Build the full QEMU command line list.
 
     Args:
@@ -290,12 +326,27 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
 
     # Machine type + KVM acceleration
     machine = template.machine_type
+    smm_suffix = ',smm=on' if template.smm else ''
+    cpu_flags = ',hv_relaxed,hv_vapic,hv_spinlocks=0x1fff,kvm=off' if template.hyperv else ''
     try:
         open('/dev/kvm', 'r+').close()
-        cmd += ['-machine', f'type={machine},accel=kvm', '-cpu', 'host']
+        cmd += ['-machine', f'type={machine},accel=kvm{smm_suffix}',
+                '-cpu', f'host{cpu_flags}']
     except OSError:
         logging.warning('KVM not available, running without acceleration')
-        cmd += ['-machine', f'type={machine}']
+        cmd += ['-machine', f'type={machine}{smm_suffix}']
+
+    # UEFI firmware pflash pair (code read-only, vars is per-job writable copy)
+    if template.firmware:
+        if not firmware_vars:
+            raise HypervisorError(
+                f"template '{template.name}' sets 'firmware' but firmware_vars was not provided")
+        cmd += ['-drive', f'if=pflash,format=raw,readonly=on,file={template.firmware}']
+        cmd += ['-drive', f'if=pflash,format=raw,file={firmware_vars}']
+
+    # TPM 2.0 sidecar (must start before QEMU opens the socket)
+    if template.tpm:
+        cmd += _tpm_cmdline(runtime_dir)
 
     # Snapshot restore: incoming migration (pcocc:1337-1341)
     if snapshot_mem:
@@ -303,8 +354,22 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
 
     # Start paused — caller will send cont() after QMP handshake
     cmd += ['-S']
-    cmd += ['-rtc', 'base=utc']
-    cmd += ['-display', 'none']
+
+    # Clock: Windows expects localtime; Linux uses UTC
+    if template.clock_offset == 'localtime':
+        cmd += ['-rtc', 'base=localtime,clock=host,driftfix=slew']
+    else:
+        cmd += ['-rtc', 'base=utc']
+
+    # Display
+    if template.display == 'vnc':
+        vnc_port = template.vnc_port or (5910 + (os.getpid() % 100))
+        display_num = vnc_port - 5900
+        logging.info('VNC on port %d (display :%d)', vnc_port, display_num)
+        cmd += ['-display', f'vnc=0.0.0.0:{display_num}']
+        cmd += ['-device', 'virtio-vga']
+    else:
+        cmd += ['-display', 'none']
 
     # SCSI controller (needed for cdrom and optional scsi disks)
     cmd += ['-device', 'virtio-scsi-pci,id=scsi0']
@@ -319,12 +384,12 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
         cmd += ['-drive', f'id=cdrom0,if=none,format=raw,readonly=on,file={cloud_init_iso}']
         cmd += ['-device', 'scsi-cd,bus=scsi0.0,drive=cdrom0']
 
-    # Direct kernel boot (optional)
+    # Direct kernel boot (optional); UEFI owns its boot order via NVRAM
     if template.kernel:
         cmd += ['-kernel', template.kernel]
         if '-append' not in (template.custom_args or []):
             cmd += ['-append', 'console=ttyS0 root=/dev/vda1']
-    else:
+    elif not template.firmware:
         cmd += ['-boot', 'order=cd']
 
     # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486)
@@ -362,6 +427,23 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # Virtio RNG
     cmd += ['-object', 'rng-random,filename=/dev/urandom,id=rng0']
     cmd += ['-device', 'virtio-rng-pci,rng=rng0']
+
+    # PCI passthrough — attach each VFIO device, optionally via its own PCIe
+    # root port. pci-root-port=true is needed for AMD GPUs (and any device
+    # sensitive to PCIe topology); false (default) attaches directly like pcocc
+    # does for IB and generic PCI devices.
+    # Chassis/slot numbering starts at 6/0x15 to avoid Q35's internal ports.
+    use_root_port = template.pci_root_port
+    for i, bdf in enumerate(pci_devices):
+        if use_root_port:
+            chassis = 6 + i
+            slot = 0x15 + i
+            port_id = f'pcie.{chassis}'
+            cmd += ['-device',
+                    f'pcie-root-port,id={port_id},bus=pcie.0,chassis={chassis},slot={slot:#x}']
+            cmd += ['-device', f'vfio-pci,host={bdf},bus={port_id}']
+        else:
+            cmd += ['-device', f'vfio-pci,host={bdf}']
 
     # Custom args from template
     if template.custom_args:

@@ -114,10 +114,15 @@ def snapshot_create(ctx, template_name, snap_dir, cores, memory):
               metavar='MB', help='RAM in MB')
 @click.option('--job-id', default=None, type=int,
               help='Job ID (defaults to PID)')
+@click.option('--pci', 'pci_devices', multiple=True, metavar='BDF',
+              help='PCI device to pass through (e.g. 0000:03:00.0). Repeatable.')
+@click.option('--detach', is_flag=True,
+              help='Return immediately after VM is ready (QEMU runs in background). '
+                   'Default blocks — required for Slurm job containment.')
 @click.option('--ssh', 'open_ssh', is_flag=True,
               help='Open an interactive SSH session after boot')
 @click.pass_context
-def launch(ctx, template_name, cores, memory, job_id, open_ssh):
+def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_ssh):
     """Launch a VM from TEMPLATE_NAME."""
     cfg, tpls = _load(ctx.obj['config_path'])
     if template_name not in tpls:
@@ -127,7 +132,7 @@ def launch(ctx, template_name, cores, memory, job_id, open_ssh):
     click.echo(f'Launching VM from template {template_name!r} '
                f'({cores} cores, {memory} MB)...')
 
-    meta = launch_vm(cfg, tpl, cores, memory, job_id)
+    meta = launch_vm(cfg, tpl, cores, memory, job_id, pci_devices=pci_devices)
 
     click.echo(f'VM ready  job_id={meta["job_id"]}  '
                f'ssh -i {meta["key_path"]} '
@@ -137,6 +142,9 @@ def launch(ctx, template_name, cores, memory, job_id, open_ssh):
     qemu_pid    = meta['pid']
     qmp_socket  = meta['qmp_socket']
     runtime_dir = meta['runtime_dir']
+
+    if detach:
+        return
 
     # pcocc-style SIGTERM handling (mirrors Hypervisor.py:1840-1864):
     #   Attempt 1 & 2: send ACPI powerdown, reschedule SIGTERM in 10s if VM

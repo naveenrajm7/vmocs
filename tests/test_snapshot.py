@@ -9,12 +9,21 @@ from vmocs.error import HypervisorError
 
 
 class FakeTemplate:
+    name = 'fake'
     machine_type = 'q35'
     disk_model = 'virtio'
     disk_cache = 'unsafe'
     kernel = None
     custom_args = []
     mount_points = {}
+    firmware = None
+    firmware_vars_template = None
+    display = 'none'
+    vnc_port = None
+    clock_offset = 'utc'
+    hyperv = False
+    smm = False
+    tpm = False
 
 
 @pytest.fixture

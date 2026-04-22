@@ -1,0 +1,350 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>templates.yaml &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="prev" title="vmocs.yaml" href="vmocs.yaml.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../conf.html">Configuration Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="vmocs.yaml.html">vmocs.yaml</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">templates.yaml</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#description">Description</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#examples">Examples</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#see-also">See Also</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../conf.html">Configuration Reference</a></li>
+      <li class="breadcrumb-item active">templates.yaml</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/manpages/man5/templates.yaml.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="templates-yaml">
+<span id="vmocs-templates-yaml-5"></span><h1>templates.yaml<a class="headerlink" href="#templates-yaml" title="Link to this heading"></a></h1>
+<section id="synopsis">
+<h2>Synopsis<a class="headerlink" href="#synopsis" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">confs/templates.yaml</span></code></p>
+</section>
+<section id="description">
+<h2>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h2>
+<p>Defines named VM templates.  Each template is a YAML mapping of settings.
+Templates can inherit from another template via the <code class="docutils literal notranslate"><span class="pre">inherits:</span></code> field;
+child settings override parent settings.</p>
+</section>
+<section id="fields">
+<h2>Fields<a class="headerlink" href="#fields" title="Link to this heading"></a></h2>
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">inherits</span></span></dt>
+<dd><p>Name of a parent template.  All parent settings are copied into the child;
+any field defined in the child overrides the corresponding parent field.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">description</span></span></dt>
+<dd><p>Human-readable description shown by <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">template</span> <span class="pre">list</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">image</span></span></dt>
+<dd><p>Absolute path to the base <code class="docutils literal notranslate"><span class="pre">qcow2</span></code> disk image.  vmocs creates a temporary
+overlay on top of this image at launch time so the original is never
+modified.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">boot-mode</span></span></dt>
+<dd><p>How the guest is configured for SSH access:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">cloud-init</span></code> <em>(default)</em></dt><dd><p>vmocs generates an ephemeral ED25519 key pair, writes a cloud-init
+ISO (<code class="docutils literal notranslate"><span class="pre">meta-data</span></code> + <code class="docutils literal notranslate"><span class="pre">user-data</span></code>), and attaches it as a CD-ROM drive.
+Requires a cloud-init-enabled guest image.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">vagrant</span></code></dt><dd><p>vmocs injects the standard Vagrant insecure public key and then
+rotates it to an ephemeral key after first SSH contact.  Works for
+Windows, BSD, or any image following the Vagrant convention.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">ssh-user</span></span></dt>
+<dd><p>Username for the initial SSH connection.</p>
+<p>Typical values: <code class="docutils literal notranslate"><span class="pre">ubuntu</span></code> (cloud-init images), <code class="docutils literal notranslate"><span class="pre">vagrant</span></code> (Vagrant boxes).</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">ssh-timeout</span></span></dt>
+<dd><p>Maximum seconds to wait for SSH to become available after QEMU starts.
+Default: <code class="docutils literal notranslate"><span class="pre">180</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">machine-type</span></span></dt>
+<dd><p>QEMU machine type passed to <code class="docutils literal notranslate"><span class="pre">-machine</span></code>.  Examples: <code class="docutils literal notranslate"><span class="pre">q35</span></code>,
+<code class="docutils literal notranslate"><span class="pre">pc-q35-8.2</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">disk-model</span></span></dt>
+<dd><p>QEMU disk controller model.  Examples: <code class="docutils literal notranslate"><span class="pre">virtio</span></code>, <code class="docutils literal notranslate"><span class="pre">virtio-scsi</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">disk-cache</span></span></dt>
+<dd><p>QEMU disk cache mode (<code class="docutils literal notranslate"><span class="pre">-drive</span> <span class="pre">cache=</span></code>).  Examples: <code class="docutils literal notranslate"><span class="pre">unsafe</span></code>,
+<code class="docutils literal notranslate"><span class="pre">writeback</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">firmware</span></span></dt>
+<dd><p>Path to a UEFI firmware image (<code class="docutils literal notranslate"><span class="pre">OVMF_CODE</span></code>).  When set, vmocs passes
+<code class="docutils literal notranslate"><span class="pre">-drive</span> <span class="pre">if=pflash</span></code> for both the code and vars images, enabling UEFI boot.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">firmware-vars-template</span></span></dt>
+<dd><p>Path to the UEFI variable store template (<code class="docutils literal notranslate"><span class="pre">OVMF_VARS</span></code>).  vmocs copies
+this file to the runtime directory at launch so each VM gets its own
+writable variable store.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">snapshot</span></span></dt>
+<dd><p>Path to a snapshot directory created by <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">snapshot</span> <span class="pre">create</span></code>.  When
+set, vmocs restores the VM from the saved memory and disk state instead of
+performing a full boot (~3–5 s vs. full boot time).</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">display</span></span></dt>
+<dd><p>Guest display backend.  <code class="docutils literal notranslate"><span class="pre">vnc</span></code> enables a VNC server; omit for no display
+(headless).</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">vnc-port</span></span></dt>
+<dd><p>VNC display port number.  Only used when <code class="docutils literal notranslate"><span class="pre">display:</span> <span class="pre">vnc</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">clock-offset</span></span></dt>
+<dd><p>Guest clock offset: <code class="docutils literal notranslate"><span class="pre">utc</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">localtime</span></code>.  Use
+<code class="docutils literal notranslate"><span class="pre">localtime</span></code> for Windows guests.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">hyperv</span></span></dt>
+<dd><p>Boolean.  Enable Hyper-V enlightenments (<code class="docutils literal notranslate"><span class="pre">-cpu</span> <span class="pre">...,hv_*</span></code>).  Improves
+performance for Windows guests.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">smm</span></span></dt>
+<dd><p>Boolean.  Enable System Management Mode (required for Secure Boot with OVMF
+<code class="docutils literal notranslate"><span class="pre">*.ms.fd</span></code> firmware).</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">tpm</span></span></dt>
+<dd><p>Boolean.  Attach a software TPM 2.0 device (<code class="docutils literal notranslate"><span class="pre">swtpm</span></code>).  Required for
+Windows 11.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">insert-key</span></span></dt>
+<dd><p>Boolean.  Whether to inject the SSH key via cloud-init or Vagrant mechanism.
+Set to <code class="docutils literal notranslate"><span class="pre">false</span></code> when using a pre-provisioned static SSH key.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">ssh-key</span></span></dt>
+<dd><p>Absolute path to a pre-existing private key to use for SSH instead of
+generating an ephemeral key.  Only used when <code class="docutils literal notranslate"><span class="pre">insert-key:</span> <span class="pre">false</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">pci-root-port</span></span></dt>
+<dd><p>Boolean.  Add a PCI root port device.  Needed for hot-plug or certain
+PCI passthrough configurations.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">mount-points</span></span></dt>
+<dd><p>Map of host directories to expose to the guest via <code class="docutils literal notranslate"><span class="pre">virtio-fs</span></code>.  Each
+entry has a name (used as the mount tag), a <code class="docutils literal notranslate"><span class="pre">path</span></code>, and a <code class="docutils literal notranslate"><span class="pre">type</span></code>
+(currently <code class="docutils literal notranslate"><span class="pre">virtio-fs</span></code>).</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mount</span><span class="o">-</span><span class="n">points</span><span class="p">:</span>
+  <span class="n">home</span><span class="p">:</span>
+    <span class="n">path</span><span class="p">:</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">virtio</span><span class="o">-</span><span class="n">fs</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">custom-args</span></span></dt>
+<dd><p>List of raw QEMU arguments appended verbatim to the QEMU command line.
+Use for options that have no dedicated template field.</p>
+</dd></dl>
+
+</section>
+<section id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
+<p>Minimal cloud-init template:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span><span class="p">:</span>
+  <span class="n">image</span><span class="p">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="mf">24.04</span><span class="o">.</span><span class="n">qcow2</span>
+  <span class="n">machine</span><span class="o">-</span><span class="nb">type</span><span class="p">:</span> <span class="n">q35</span>
+  <span class="n">disk</span><span class="o">-</span><span class="n">model</span><span class="p">:</span> <span class="n">virtio</span>
+  <span class="n">disk</span><span class="o">-</span><span class="n">cache</span><span class="p">:</span> <span class="n">unsafe</span>
+  <span class="n">ssh</span><span class="o">-</span><span class="n">user</span><span class="p">:</span> <span class="n">ubuntu</span>
+  <span class="n">ssh</span><span class="o">-</span><span class="n">timeout</span><span class="p">:</span> <span class="mi">180</span>
+</pre></div>
+</div>
+<p>Inheritance and fast restore:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">snap</span><span class="o">-</span><span class="n">ubuntu</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+  <span class="n">snapshot</span><span class="p">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">snap</span>
+</pre></div>
+</div>
+<p>UEFI Windows guest with TPM:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">windows</span><span class="o">-</span><span class="n">vm</span><span class="p">:</span>
+  <span class="n">image</span><span class="p">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">win11</span><span class="o">.</span><span class="n">qcow2</span>
+  <span class="n">boot</span><span class="o">-</span><span class="n">mode</span><span class="p">:</span> <span class="n">vagrant</span>
+  <span class="n">ssh</span><span class="o">-</span><span class="n">user</span><span class="p">:</span> <span class="n">vagrant</span>
+  <span class="n">ssh</span><span class="o">-</span><span class="n">timeout</span><span class="p">:</span> <span class="mi">300</span>
+  <span class="n">machine</span><span class="o">-</span><span class="nb">type</span><span class="p">:</span> <span class="n">pc</span><span class="o">-</span><span class="n">q35</span><span class="o">-</span><span class="mf">8.2</span>
+  <span class="n">disk</span><span class="o">-</span><span class="n">model</span><span class="p">:</span> <span class="n">virtio</span><span class="o">-</span><span class="n">scsi</span>
+  <span class="n">firmware</span><span class="p">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">OVMF</span><span class="o">/</span><span class="n">OVMF_CODE_4M</span><span class="o">.</span><span class="n">ms</span><span class="o">.</span><span class="n">fd</span>
+  <span class="n">firmware</span><span class="o">-</span><span class="nb">vars</span><span class="o">-</span><span class="n">template</span><span class="p">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">OVMF</span><span class="o">/</span><span class="n">OVMF_VARS_4M</span><span class="o">.</span><span class="n">ms</span><span class="o">.</span><span class="n">fd</span>
+  <span class="n">clock</span><span class="o">-</span><span class="n">offset</span><span class="p">:</span> <span class="n">localtime</span>
+  <span class="n">hyperv</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">smm</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">tpm</span><span class="p">:</span> <span class="n">true</span>
+</pre></div>
+</div>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
+<p><em class="manpage">vmocs(1)</em>, <em class="manpage">vmocs-template(1)</em>, <em class="manpage">vmocs.yaml(5)</em></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="vmocs.yaml.html" class="btn btn-neutral float-left" title="vmocs.yaml" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

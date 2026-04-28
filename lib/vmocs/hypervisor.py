@@ -256,12 +256,21 @@ def _mount_cmdline(mount_points, runtime_dir):
             if readonly:
                 raise HypervisorError('read-only mounts not supported with virtio-fs')
             sock = os.path.join(runtime_dir, f'virtiofs_{i}.sock')
+            pid_file = sock + '.pid'
             p = subprocess.Popen(
                 [_find_virtiofsd(), '--rlimit-nofile', '0',
-                 '--socket-path', sock, '--sandbox', 'namespace',
-                 '--shared-dir', host_path],
-                close_fds=True)
-            atexit.register(_try_kill, p)
+                 '--socket-path', sock,
+                 '--sandbox', 'namespace', '--shared-dir', host_path],
+                close_fds=True,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            deadline = time.monotonic() + 10
+            while not os.path.exists(sock):
+                if time.monotonic() > deadline:
+                    raise HypervisorError('virtiofsd failed to start (socket timeout)')
+                time.sleep(0.1)
+            with open(pid_file, 'w') as f:
+                f.write(str(p.pid))
             cmd += ['-chardev', f'socket,id=char_fs_{i},path={sock}']
             cmd += ['-device',
                     f'vhost-user-fs-pci,queue-size=1024,chardev=char_fs_{i},tag={tag}']
@@ -392,13 +401,14 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     elif not template.firmware:
         cmd += ['-boot', 'order=cd']
 
-    # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486)
+    # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486).
+    # Use memfd (anonymous) rather than /dev/shm so large allocations aren't
+    # constrained by the tmpfs size limit.
     mount_points = template.mount_points or {}
     if _has_virtiofs(mount_points):
         cmd += ['-m', str(memory_mb)]
         cmd += ['-object',
-                f'memory-backend-file,id=mem,size={memory_mb}M,'
-                f'mem-path=/dev/shm,share=on']
+                f'memory-backend-memfd,id=mem,size={memory_mb}M,share=on']
         cmd += ['-numa', 'node,memdev=mem']
     else:
         cmd += ['-m', str(memory_mb)]
@@ -406,9 +416,10 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # CPU topology
     cmd += ['-smp', f'threads=1,cores=1,sockets={cores}']
 
-    # User-mode networking with SSH port forward
+    # User-mode networking with SSH port forward and any extra hostfwds
+    extra_fwds = ''.join(f',hostfwd={fwd}' for fwd in (template.extra_hostfwd or []))
     cmd += ['-netdev',
-            f'user,id=net0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22']
+            f'user,id=net0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22{extra_fwds}']
     cmd += ['-device', 'virtio-net-pci,netdev=net0']
 
     # Mount points

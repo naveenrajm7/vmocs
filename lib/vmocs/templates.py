@@ -38,6 +38,7 @@ TEMPLATE_SETTINGS = {
     'insert-key':             (False, True,    True),   # False = skip key rotation (Vagrant insert_key=false)
     'ssh-key':                (False, None,    True),   # private key path when insert-key=false
     'pci-root-port':          (False, False,   True),   # True = each PCI passthrough device gets its own pcie-root-port (required for AMD GPUs)
+    'extra-hostfwd':          (False, [],      True),   # extra QEMU hostfwd entries, e.g. ['tcp::3389-:3389']
     'inherits':               (False, None,    False),
     'description':   (False, '',         False),
 }

@@ -311,6 +311,12 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
     else:
         _kill_qemu(pid)
 
-    import shutil
+    import glob, signal, shutil
+    for pid_file in glob.glob(os.path.join(runtime_dir, '*.pid')):
+        try:
+            with open(pid_file) as f:
+                os.kill(int(f.read().strip()), signal.SIGTERM)
+        except OSError:
+            pass
     shutil.rmtree(runtime_dir, ignore_errors=True)
     return meta

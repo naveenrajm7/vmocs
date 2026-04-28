@@ -56,6 +56,13 @@ windows-packer:
   insert-key: false
   ssh-key: /home/AMD/nmuthura/.ssh/id_ed25519
   pci-root-port: true
+  extra-hostfwd:
+    - tcp::3389-:3389
+    - tcp::5985-:5985
+  mount-points:
+    nmuthura:
+      path: /home/AMD/nmuthura
+      type: virtio-fs
   custom-args:
     - -no-shutdown
     - -device
@@ -68,6 +75,18 @@ windows-packer:
     - type=1,manufacturer="Dell Inc.",product="PowerEdge R750",version="1.0",serial="DL1234XTX"
     - -smbios
     - type=2,manufacturer="Dell Inc.",product="PowerEdge R750"
+
+windows-packer-v2:
+  description: Windows 11 AMD driver build v2 — VirtIO-FS + WinFsp + RDP + SSH (builds4)
+  inherits: windows-packer
+  image: /vms/packer/vmoc-save/win11-vmocs-20260427.qcow2
+  insert-key: false
+  ssh-key: /home/AMD/nmuthura/devcloud/vmocs/lib/vmocs/keys/vagrant_insecure_key
+  vnc-port: 5912
+  mount-points:
+    home:
+      path: /home/AMD/nmuthura
+      type: virtio-fs
 
 debian-vagrant:
   image: /home/AMD/nmuthura/vms/extracted/box.img

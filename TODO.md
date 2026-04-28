@@ -27,23 +27,24 @@ Implementation sketch:
 This is only needed in blocking mode. Detach mode has no `waitpid` so job lifetime is
 unaffected by guest-initiated shutdown regardless.
 
-### Investigate VM boot regression after UEFI feature was added
+### Improve VM boot time
 
-BIOS VMs boot noticeably slower on the current UEFI-capable codebase compared to
-the pre-UEFI baseline. Need to confirm this is a code regression (not hardware
-variance) by comparing boot time across two checkpoints:
+Current baseline on this machine (HEAD, `5c9dcc8`):
 
-**Reproduction steps:**
-1. `git checkout <pre-UEFI commit>` — launch a BIOS VM, record time-to-SSH.
-2. `git checkout HEAD` — launch the same BIOS VM (no UEFI flags), record time-to-SSH.
-3. Compare: if (2) is slower, the regression is in the UEFI-era code, not BIOS/UEFI
-   firmware differences.
+| Template        | Boot mode   | Time to SSH |
+|-----------------|-------------|-------------|
+| `base-ubuntu`   | cloud-init  | ~5m 30s     |
+| `debian-vagrant`| vagrant BIOS| ~6m 14s     |
+| `debian-vagrant-uefi` | vagrant UEFI | ~17m 34s |
 
-**Likely suspects:**
-- Extra QEMU args unconditionally added for UEFI compatibility (e.g. `-machine` flags,
-  `-drive` ordering changes, pflash devices).
-- Template rendering now touches machine type or firmware paths even for non-UEFI VMs.
-- `wait_for_ssh` / blocking-launch timing changes introduced alongside UEFI work.
+UEFI boot is ~3x slower than BIOS — likely OVMF POST overhead, not a code issue.
+BIOS/cloud-init times (~5-6m) may also be hardware-dependent; revisit on a different
+machine before optimising.
 
-Pre-UEFI baseline commit: `c19ae6f^` (commit before "feat: UEFI, Windows guest, TPM,
-PCI passthrough, SSH hardening").
+**Possible directions:**
+- OVMF: try `OVMF_CODE_4M.ms.fd` (pre-enrolled keys) or disable Secure Boot to
+  reduce POST time.
+- Snapshot restore (`vmocs snapshot`) already exists for cloud-init — measure vs
+  cold boot to confirm it is worth using by default.
+- Profile guest boot with `systemd-analyze` to see if time is in firmware, kernel,
+  or userspace.

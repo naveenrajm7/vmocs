@@ -13,23 +13,31 @@ Description
 
 The main vmocs configuration file.  It is read at startup and controls global
 settings such as the QEMU binary path, runtime directory, and network
-configuration.  A custom path can be specified with ``vmocs --config PATH``.
+configuration.
+
+The configuration file is resolved in the following order:
+
+1. ``--config PATH`` command-line option
+2. ``VMOCS_CONF`` environment variable
+3. ``confs/vmocs.yaml`` relative to the current working directory
+4. ``/etc/vmocs/vmocs.yaml`` (system-wide fallback)
 
 Fields
 ------
 
 .. describe:: qemu-bin
 
-   Absolute path to the QEMU system binary.
+   Path to the QEMU system binary.  Can be an absolute path or a bare name
+   resolved via ``PATH``.
 
-   Default: ``/usr/bin/qemu-system-x86_64``
+   Default: ``qemu-system-x86_64``
 
 .. describe:: runtime-dir
 
    Directory where per-VM runtime state (PID, SSH port, QMP socket, ephemeral
    keys) is stored.  vmocs creates one subdirectory per running VM.
 
-   Default: ``/tmp/vmocs``
+   Default: ``/var/run/vmocs``
 
 .. describe:: gpu-devices
 

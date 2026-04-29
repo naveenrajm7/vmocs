@@ -22,11 +22,13 @@ qemu-img             # image inspection and COW overlay creation
 genisoimage          # cloud-init ISO generation (cloud-init mode only)
 ssh / ssh-keygen     # key generation and connectivity checks
 lzop                 # memory snapshot compression (snapshot mode only)
+swtpm                # TPM 2.0 emulation (only when tpm: true)
+virtiofsd            # VirtioFS daemon (only when mount-points use type: virtio-fs)
 ```
 
 Install on Debian/Ubuntu:
 ```bash
-apt install qemu-system-x86 qemu-utils genisoimage openssh-client lzop
+apt install qemu-system-x86 qemu-utils genisoimage openssh-client lzop swtpm virtiofsd
 ```
 
 ### Setup

@@ -1,19 +1,20 @@
 # vmocs
 
-A lightweight QEMU/KVM wrapper for launching and managing virtual machines,
-extracted and simplified from [pcocc](https://github.com/cea-hpc/pcocc).
-No libvirt, no agents — just fork/exec QEMU with user-mode networking.
+vmocs — **V**irtual **M**achine **O**n **C**ompute through **S**LURM — is a lightweight QEMU wrapper and SLURM plugin, inspired by [pcocc (Peacock)](https://github.com/cea-hpc/pcocc), that allows users to run Virtual Machines through the `srun` command.
 
-## Features
+The name is pronounced "vimoks", after [ವಿಮೋಕ್ಷ](https://alar.ink/dictionary/kannada/english/%E0%B2%B5%E0%B2%BF%E0%B2%AE%E0%B3%8B%E0%B2%95%E0%B3%8D%E0%B2%B7) (Kannada for liberation, an untying, unbounding) — fitting for a tool built to free users to run kernel-space workloads without interfering with other users or jobs.
 
-- **Two first-class boot modes** — cloud-init or vagrant convention
-- **Fast restore** — memory snapshots bring a VM up in ~2s vs ~3min cold boot
-- **Ephemeral keys** — per-launch ED25519 keypairs; vagrant insecure key is
-  rotated out the moment the VM becomes reachable
-- **Concurrent launches** — port allocation is collision-safe across parallel jobs
-- **Disk save** — flatten a running VM's COW overlay to a standalone image
+## Benefits
 
-## Prerequisites
+* Seamlessly execute the user's task in a virtual machine.
+* Simple command-line interface that wraps QEMU
+* Fast VM load with support for snapshots.
+* Allows users to bring their own OS + kernel, even Windows to Slurm.
+* Share VMs via templates
+
+## Installation
+
+### Prerequisites
 
 ```
 qemu-system-x86_64   # QEMU (with KVM support)
@@ -21,14 +22,16 @@ qemu-img             # image inspection and COW overlay creation
 genisoimage          # cloud-init ISO generation (cloud-init mode only)
 ssh / ssh-keygen     # key generation and connectivity checks
 lzop                 # memory snapshot compression (snapshot mode only)
+swtpm                # TPM 2.0 emulation (only when tpm: true)
+virtiofsd            # VirtioFS daemon (only when mount-points use type: virtio-fs)
 ```
 
 Install on Debian/Ubuntu:
 ```bash
-apt install qemu-system-x86 qemu-utils genisoimage openssh-client lzop
+apt install qemu-system-x86 qemu-utils genisoimage openssh-client lzop swtpm virtiofsd
 ```
 
-## Setup
+### Setup
 
 ```bash
 git clone <repo>

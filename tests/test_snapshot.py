@@ -1,7 +1,6 @@
 """Unit tests for snapshot-related code paths."""
 
 import os
-import subprocess
 import pytest
 
 from vmocs.hypervisor import build_qemu_cmdline
@@ -16,6 +15,8 @@ class FakeTemplate:
     kernel = None
     custom_args = []
     mount_points = {}
+    extra_hostfwd = []
+    pci_root_port = False
     firmware = None
     firmware_vars_template = None
     display = 'none'
@@ -26,16 +27,16 @@ class FakeTemplate:
     tpm = False
 
 
+@pytest.fixture(autouse=True)
+def _stub_image_format(monkeypatch):
+    monkeypatch.setattr('vmocs.hypervisor.VMImage.image_format', staticmethod(lambda p: 'qcow2'))
+
+
 @pytest.fixture
 def cow_img(tmp_path):
-    base = str(tmp_path / 'base.qcow2')
-    overlay = str(tmp_path / 'cow.qcow2')
-    subprocess.check_call(['qemu-img', 'create', '-f', 'qcow2', base, '64M'],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.check_call(['qemu-img', 'create', '-f', 'qcow2', '-F', 'qcow2',
-                           '-b', base, overlay],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return overlay
+    p = tmp_path / 'cow.qcow2'
+    p.touch()
+    return str(p)
 
 
 def test_cmdline_no_snapshot(tmp_path, cow_img):

@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install qemu-utils
+        run: sudo apt-get install -y qemu-utils
+
       - name: Install dependencies
         run: |
           pip install pytest

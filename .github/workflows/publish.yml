@@ -1,4 +1,4 @@
-name: Publish to GitHub Packages
+name: Publish to GitHub Release
 
 on:
   release:
@@ -8,8 +8,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -20,13 +19,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build
 
       - name: Build package
         run: python -m build
 
-      - name: Publish to GitHub Packages
+      - name: Upload to GitHub Release
+        run: gh release upload ${{ github.ref_name }} dist/* --clobber
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: twine upload --repository-url https://upload.pkg.github.com/${{ github.repository_owner }}/ dist/*
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

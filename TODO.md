@@ -2,6 +2,42 @@
 
 ## Pending
 
+### Two-level template system (system + user) with decoupled templates path
+
+Currently `templates.yaml` must live in the same directory as `vmocs.yaml`. This
+prevents cluster admins from placing templates in a shared path, and there is no
+per-user template support.
+
+**Goal:** Mirror pcocc's pattern — system templates loaded first (required), user
+templates merged on top (optional, silently skipped if absent).
+
+**Files to change:**
+
+- `lib/vmocs/config.py` line 39 — replace `self.templates_path` with two attrs:
+  - `self.system_templates_path` — `$VMOCS_SYSTEM_CONF_DIR/templates.yaml`
+    (falls back to dirname of config file if env var not set)
+  - `self.user_templates_path` — `~/.vmocs/templates.yaml`
+
+- `lib/vmocs/templates.py` `TemplateConfig.load()` — add `required=True` parameter;
+  when `required=False` and file is absent (`errno.ENOENT`), silently return instead
+  of raising `InvalidConfigError`. Duplicate names across loads still raise an error.
+
+- `lib/vmocs/cli.py` `_load()` — call `tpls.load()` twice:
+  ```python
+  tpls.load(cfg.system_templates_path, required=True)
+  tpls.load(cfg.user_templates_path, required=False)
+  ```
+
+**Behaviour:**
+
+| Scenario | Result |
+|---|---|
+| `/etc/vmocs/templates.yaml` exists | Loaded as system templates (required) |
+| `VMOCS_SYSTEM_CONF_DIR=/shared/cluster/vmocs` set | Loads from that path instead |
+| `~/.vmocs/templates.yaml` exists | Merged on top (optional) |
+| `~/.vmocs/templates.yaml` absent | Silently skipped |
+| Duplicate name in system + user | `InvalidConfigError` raised |
+
 ### QMP event watcher — reboot-survives, shutdown-ends-job
 
 Currently `-no-shutdown` is an all-or-nothing flag: either both guest reboot and guest

@@ -1,6 +1,5 @@
 """Unit tests for QEMU cmdline builder."""
 
-import subprocess
 import os
 import pytest
 
@@ -16,6 +15,8 @@ class FakeTemplate:
     kernel = None
     custom_args = []
     mount_points = {}
+    extra_hostfwd = []
+    pci_root_port = False
     firmware = None
     firmware_vars_template = None
     display = 'none'
@@ -38,20 +39,23 @@ class FakeTemplateUEFI(FakeTemplate):
     tpm = True
 
 
+@pytest.fixture(autouse=True)
+def _stub_image_format(monkeypatch):
+    monkeypatch.setattr('vmocs.hypervisor.VMImage.image_format', staticmethod(lambda p: 'qcow2'))
+
+
 @pytest.fixture
 def base_img(tmp_path):
-    p = str(tmp_path / 'base.qcow2')
-    subprocess.check_call(['qemu-img', 'create', '-f', 'qcow2', p, '64M'],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return p
+    p = tmp_path / 'base.qcow2'
+    p.touch()
+    return str(p)
 
 
 @pytest.fixture
 def cow_img(tmp_path, base_img):
-    p = str(tmp_path / 'cow.qcow2')
-    subprocess.check_call(['qemu-img', 'create', '-f', 'qcow2', '-F', 'qcow2', '-b', base_img, p],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return p
+    p = tmp_path / 'cow.qcow2'
+    p.touch()
+    return str(p)
 
 
 def test_block_cmdline_virtio(cow_img):
@@ -157,10 +161,10 @@ def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
     # doesn't need virtiofsd installed or a real qcow2 image.
     monkeypatch.setattr('vmocs.hypervisor._find_virtiofsd',
                         lambda: '/usr/libexec/virtiofsd')
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
     fake_proc = MagicMock()
     monkeypatch.setattr('vmocs.hypervisor.subprocess.Popen', lambda *a, **kw: fake_proc)
-    monkeypatch.setattr('vmocs.hypervisor.VMImage.image_format', staticmethod(lambda p: 'qcow2'))
+    monkeypatch.setattr('vmocs.hypervisor.os.path.exists', lambda p: True)
 
     runtime = str(tmp_path / 'rt')
     os.makedirs(runtime)
@@ -173,8 +177,7 @@ def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
     )
     assert '-m' in cmd
-    assert any('memory-backend-file' in a and '1024M' in a and '/dev/shm' in a
-               for a in cmd)
+    assert any('memory-backend-memfd' in a and '1024M' in a for a in cmd)
     assert '-numa' in cmd
     assert any('vhost-user-fs-pci' in a for a in cmd)
 
@@ -183,12 +186,12 @@ def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
 # UEFI / Windows feature tests
 # ---------------------------------------------------------------------------
 
+
 def _uefi_cmd(tmp_path, cow_img, monkeypatch):
     """Helper: build cmdline for FakeTemplateUEFI with swtpm and image_format stubbed."""
     from unittest.mock import MagicMock
     fake_proc = MagicMock()
     monkeypatch.setattr('vmocs.hypervisor.subprocess.Popen', lambda *a, **kw: fake_proc)
-    monkeypatch.setattr('vmocs.hypervisor.VMImage.image_format', staticmethod(lambda p: 'qcow2'))
     # Make swtpm socket appear immediately without polling
     monkeypatch.setattr('vmocs.hypervisor.time.monotonic', lambda: 0)
     monkeypatch.setattr('vmocs.hypervisor.os.path.exists', lambda p: True)

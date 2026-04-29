@@ -33,6 +33,12 @@ Fields
    overlay on top of this image at launch time so the original is never
    modified.
 
+.. describe:: image-dir
+
+   Directory containing ``qcow2`` images.  vmocs uses the first ``*.qcow2``
+   file found.  Mutually exclusive with ``image``; ``image`` takes precedence
+   when a snapshot is not in use.
+
 .. describe:: boot-mode
 
    How the guest is configured for SSH access:
@@ -56,7 +62,12 @@ Fields
 .. describe:: ssh-timeout
 
    Maximum seconds to wait for SSH to become available after QEMU starts.
-   Default: ``180``.
+   Default: ``120``.
+
+.. describe:: qemu-bin
+
+   Override the global ``qemu-bin`` path for this template.  Useful when
+   different templates require different QEMU versions.
 
 .. describe:: machine-type
 
@@ -65,12 +76,13 @@ Fields
 
 .. describe:: disk-model
 
-   QEMU disk controller model.  Examples: ``virtio``, ``virtio-scsi``.
+   QEMU disk controller model.  Valid values: ``virtio`` *(default)*,
+   ``virtio-scsi``, ``ide``, ``nvme``.
 
 .. describe:: disk-cache
 
-   QEMU disk cache mode (``-drive cache=``).  Examples: ``unsafe``,
-   ``writeback``, ``none``.
+   QEMU disk cache mode.  Valid values: ``unsafe`` *(default)*,
+   ``writeback``, ``none``, ``writethrough``, ``directsync``.
 
 .. describe:: firmware
 
@@ -130,21 +142,72 @@ Fields
 
 .. describe:: pci-root-port
 
-   Boolean.  Add a PCI root port device.  Needed for hot-plug or certain
-   PCI passthrough configurations.
+   Boolean.  Add a PCI root port device per PCI passthrough device.  Needed
+   for AMD GPUs and any device sensitive to PCIe topology.
+
+.. describe:: extra-hostfwd
+
+   List of extra QEMU ``hostfwd`` entries appended to the user-mode network
+   device.  Each entry uses the QEMU syntax
+   ``protocol::hostport-:guestport``.  Default: ``[]``.
+
+   Example::
+
+      extra-hostfwd:
+        - tcp::3389-:3389
+        - tcp::5985-:5985
+
+.. describe:: gpu
+
+   GPU passthrough mode: ``full`` (whole-device VFIO), ``sriov``
+   (SR-IOV virtual function), or omit for no GPU passthrough.
+
+.. describe:: bind-vcpus
+
+   Boolean.  Pin guest vCPUs to host CPUs.  Default: ``false``.
+
+.. describe:: user-data
+
+   Custom cloud-init user-data string.  When set, vmocs uses this instead of
+   generating its own user-data.  Only applies to ``cloud-init`` boot mode.
+
+.. describe:: kernel
+
+   Path to a Linux kernel image for direct kernel boot (bypasses BIOS/UEFI).
+   When set, vmocs passes ``-kernel`` and a default ``-append`` with
+   ``console=ttyS0 root=/dev/vda1`` unless ``custom-args`` contains
+   ``-append``.
 
 .. describe:: mount-points
 
-   Map of host directories to expose to the guest via ``virtio-fs``.  Each
-   entry has a name (used as the mount tag), a ``path``, and a ``type``
-   (currently ``virtio-fs``).
+   Map of host directories to share with the guest.  Each entry has a name
+   (used as the mount tag inside the guest), a ``path``, and an optional
+   ``type``.
 
-   Example::
+   Supported types:
+
+   ``virtio-9p`` *(default)*
+     Built into QEMU, no extra daemon required.  Supports ``readonly: true``.
+
+   ``virtio-fs``
+     Uses ``virtiofsd`` as a sidecar daemon.  Higher performance but requires
+     shared memory backing and does not support read-only mounts.
+
+   Full syntax::
 
       mount-points:
         home:
           path: /home/user
           type: virtio-fs
+        scratch:
+          path: /tmp/scratch
+          type: virtio-9p
+          readonly: true
+
+   Shorthand (defaults to ``virtio-9p``)::
+
+      mount-points:
+        home: /home/user
 
 .. describe:: custom-args
 

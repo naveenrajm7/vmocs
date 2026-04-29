@@ -94,15 +94,23 @@
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h2>
 <p>The main vmocs configuration file.  It is read at startup and controls global
 settings such as the QEMU binary path, runtime directory, and network
-configuration.  A custom path can be specified with <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">--config</span> <span class="pre">PATH</span></code>.</p>
+configuration.</p>
+<p>The configuration file is resolved in the following order:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code> command-line option</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VMOCS_CONF</span></code> environment variable</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">confs/vmocs.yaml</span></code> relative to the current working directory</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/etc/vmocs/vmocs.yaml</span></code> (system-wide fallback)</p></li>
+</ol>
 </section>
 <section id="fields">
 <h2>Fields<a class="headerlink" href="#fields" title="Link to this heading"></a></h2>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">qemu-bin</span></span></dt>
-<dd><p>Absolute path to the QEMU system binary.</p>
-<p>Default: <code class="docutils literal notranslate"><span class="pre">/usr/bin/qemu-system-x86_64</span></code></p>
+<dd><p>Path to the QEMU system binary.  Can be an absolute path or a bare name
+resolved via <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">qemu-system-x86_64</span></code></p>
 </dd></dl>
 
 <dl class="describe">
@@ -110,7 +118,7 @@ configuration.  A custom path can be specified with <code class="docutils litera
 <span class="sig-name descname"><span class="pre">runtime-dir</span></span></dt>
 <dd><p>Directory where per-VM runtime state (PID, SSH port, QMP socket, ephemeral
 keys) is stored.  vmocs creates one subdirectory per running VM.</p>
-<p>Default: <code class="docutils literal notranslate"><span class="pre">/tmp/vmocs</span></code></p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">/var/run/vmocs</span></code></p>
 </dd></dl>
 
 <dl class="describe">

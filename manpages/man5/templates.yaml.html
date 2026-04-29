@@ -120,6 +120,14 @@ modified.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">image-dir</span></span></dt>
+<dd><p>Directory containing <code class="docutils literal notranslate"><span class="pre">qcow2</span></code> images.  vmocs uses the first <code class="docutils literal notranslate"><span class="pre">*.qcow2</span></code>
+file found.  Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">image</span></code>; <code class="docutils literal notranslate"><span class="pre">image</span></code> takes precedence
+when a snapshot is not in use.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">boot-mode</span></span></dt>
 <dd><p>How the guest is configured for SSH access:</p>
 <dl class="simple">
@@ -145,7 +153,14 @@ Windows, BSD, or any image following the Vagrant convention.</p>
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">ssh-timeout</span></span></dt>
 <dd><p>Maximum seconds to wait for SSH to become available after QEMU starts.
-Default: <code class="docutils literal notranslate"><span class="pre">180</span></code>.</p>
+Default: <code class="docutils literal notranslate"><span class="pre">120</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">qemu-bin</span></span></dt>
+<dd><p>Override the global <code class="docutils literal notranslate"><span class="pre">qemu-bin</span></code> path for this template.  Useful when
+different templates require different QEMU versions.</p>
 </dd></dl>
 
 <dl class="describe">
@@ -158,14 +173,15 @@ Default: <code class="docutils literal notranslate"><span class="pre">180</span>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">disk-model</span></span></dt>
-<dd><p>QEMU disk controller model.  Examples: <code class="docutils literal notranslate"><span class="pre">virtio</span></code>, <code class="docutils literal notranslate"><span class="pre">virtio-scsi</span></code>.</p>
+<dd><p>QEMU disk controller model.  Valid values: <code class="docutils literal notranslate"><span class="pre">virtio</span></code> <em>(default)</em>,
+<code class="docutils literal notranslate"><span class="pre">virtio-scsi</span></code>, <code class="docutils literal notranslate"><span class="pre">ide</span></code>, <code class="docutils literal notranslate"><span class="pre">nvme</span></code>.</p>
 </dd></dl>
 
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">disk-cache</span></span></dt>
-<dd><p>QEMU disk cache mode (<code class="docutils literal notranslate"><span class="pre">-drive</span> <span class="pre">cache=</span></code>).  Examples: <code class="docutils literal notranslate"><span class="pre">unsafe</span></code>,
-<code class="docutils literal notranslate"><span class="pre">writeback</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>.</p>
+<dd><p>QEMU disk cache mode.  Valid values: <code class="docutils literal notranslate"><span class="pre">unsafe</span></code> <em>(default)</em>,
+<code class="docutils literal notranslate"><span class="pre">writeback</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">writethrough</span></code>, <code class="docutils literal notranslate"><span class="pre">directsync</span></code>.</p>
 </dd></dl>
 
 <dl class="describe">
@@ -249,21 +265,81 @@ generating an ephemeral key.  Only used when <code class="docutils literal notra
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">pci-root-port</span></span></dt>
-<dd><p>Boolean.  Add a PCI root port device.  Needed for hot-plug or certain
-PCI passthrough configurations.</p>
+<dd><p>Boolean.  Add a PCI root port device per PCI passthrough device.  Needed
+for AMD GPUs and any device sensitive to PCIe topology.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">extra-hostfwd</span></span></dt>
+<dd><p>List of extra QEMU <code class="docutils literal notranslate"><span class="pre">hostfwd</span></code> entries appended to the user-mode network
+device.  Each entry uses the QEMU syntax
+<code class="docutils literal notranslate"><span class="pre">protocol::hostport-:guestport</span></code>.  Default: <code class="docutils literal notranslate"><span class="pre">[]</span></code>.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">extra</span><span class="o">-</span><span class="n">hostfwd</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">3389</span><span class="o">-</span><span class="p">:</span><span class="mi">3389</span>
+  <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">5985</span><span class="o">-</span><span class="p">:</span><span class="mi">5985</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">gpu</span></span></dt>
+<dd><p>GPU passthrough mode: <code class="docutils literal notranslate"><span class="pre">full</span></code> (whole-device VFIO), <code class="docutils literal notranslate"><span class="pre">sriov</span></code>
+(SR-IOV virtual function), or omit for no GPU passthrough.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">bind-vcpus</span></span></dt>
+<dd><p>Boolean.  Pin guest vCPUs to host CPUs.  Default: <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">user-data</span></span></dt>
+<dd><p>Custom cloud-init user-data string.  When set, vmocs uses this instead of
+generating its own user-data.  Only applies to <code class="docutils literal notranslate"><span class="pre">cloud-init</span></code> boot mode.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">kernel</span></span></dt>
+<dd><p>Path to a Linux kernel image for direct kernel boot (bypasses BIOS/UEFI).
+When set, vmocs passes <code class="docutils literal notranslate"><span class="pre">-kernel</span></code> and a default <code class="docutils literal notranslate"><span class="pre">-append</span></code> with
+<code class="docutils literal notranslate"><span class="pre">console=ttyS0</span> <span class="pre">root=/dev/vda1</span></code> unless <code class="docutils literal notranslate"><span class="pre">custom-args</span></code> contains
+<code class="docutils literal notranslate"><span class="pre">-append</span></code>.</p>
 </dd></dl>
 
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">mount-points</span></span></dt>
-<dd><p>Map of host directories to expose to the guest via <code class="docutils literal notranslate"><span class="pre">virtio-fs</span></code>.  Each
-entry has a name (used as the mount tag), a <code class="docutils literal notranslate"><span class="pre">path</span></code>, and a <code class="docutils literal notranslate"><span class="pre">type</span></code>
-(currently <code class="docutils literal notranslate"><span class="pre">virtio-fs</span></code>).</p>
-<p>Example:</p>
+<dd><p>Map of host directories to share with the guest.  Each entry has a name
+(used as the mount tag inside the guest), a <code class="docutils literal notranslate"><span class="pre">path</span></code>, and an optional
+<code class="docutils literal notranslate"><span class="pre">type</span></code>.</p>
+<p>Supported types:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">virtio-9p</span></code> <em>(default)</em></dt><dd><p>Built into QEMU, no extra daemon required.  Supports <code class="docutils literal notranslate"><span class="pre">readonly:</span> <span class="pre">true</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">virtio-fs</span></code></dt><dd><p>Uses <code class="docutils literal notranslate"><span class="pre">virtiofsd</span></code> as a sidecar daemon.  Higher performance but requires
+shared memory backing and does not support read-only mounts.</p>
+</dd>
+</dl>
+<p>Full syntax:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mount</span><span class="o">-</span><span class="n">points</span><span class="p">:</span>
   <span class="n">home</span><span class="p">:</span>
     <span class="n">path</span><span class="p">:</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span>
     <span class="nb">type</span><span class="p">:</span> <span class="n">virtio</span><span class="o">-</span><span class="n">fs</span>
+  <span class="n">scratch</span><span class="p">:</span>
+    <span class="n">path</span><span class="p">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">scratch</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">virtio</span><span class="o">-</span><span class="mi">9</span><span class="n">p</span>
+    <span class="n">readonly</span><span class="p">:</span> <span class="n">true</span>
+</pre></div>
+</div>
+<p>Shorthand (defaults to <code class="docutils literal notranslate"><span class="pre">virtio-9p</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mount</span><span class="o">-</span><span class="n">points</span><span class="p">:</span>
+  <span class="n">home</span><span class="p">:</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span>
 </pre></div>
 </div>
 </dd></dl>

@@ -100,6 +100,40 @@ Implementation sketch:
 This is only needed in blocking mode. Detach mode has no `waitpid` so job lifetime is
 unaffected by guest-initiated shutdown regardless.
 
+### Fix --vm-save race condition (Slurm)
+
+`--vm-save` via `srun --vm-image ... --vm-save <path>` produces a sparse, unusable image.
+
+**Root cause:** Two cleanup paths race after job cancellation:
+
+1. `scancel` → SIGTERM → `_block_until_exit` in `vmocs launch` → ACPI shutdown → QEMU exits →
+   `finally: shutil.rmtree(runtime_dir)` — deletes `disk.qcow2` (the COW overlay)
+2. `slurm_spank_exit` → `vmocs stop <job_id> --save <path>` → `teardown_vm` reads `vm.json` →
+   calls `convert_standalone(meta['overlay'], save_path)` — but the overlay is already deleted
+   (or was partially flushed when SIGTERM killed QEMU mid-write)
+
+**Observed symptom:** Saved image is ~175 MB vs ~600 MB for the original. `qemu-img check`
+shows only 2.50% clusters allocated (1434 vs 29256). The image has no backing file and passes
+structural checks, but launching a VM from it results in QEMU starting (process visible) with
+the QMP socket created, yet the QMP greeting banner is never sent — VM hangs before any guest
+code runs.
+
+**Why qemu-img convert is not to blame:** Manual `qemu-img convert` on an intact COW overlay
+correctly traverses the backing chain and produces a full standalone image. The race means
+`convert_standalone` is called on an already-deleted overlay (gets ENOENT), or QEMU was killed
+before flushing dirty cache pages to the overlay, so only the sparsely-written COW delta is
+present at convert time.
+
+**Fix direction:** When `--save` is requested, `vmocs launch` must not delete `runtime_dir` in
+its finally block — it should leave the overlay intact for `vmocs stop --save` to convert. One
+approach: write a `save_path` field into `vm.json` at launch time; in the finally block, skip
+`shutil.rmtree` if that field is set; let `vmocs stop` own the full cleanup after conversion.
+
+**Validation:** Launch a VM from the saved qcow2 as a template image — it must boot successfully
+and SSH must become reachable within the normal timeout.
+
+---
+
 ### Improve VM boot time
 
 Current baseline on this machine (HEAD, `5c9dcc8`):

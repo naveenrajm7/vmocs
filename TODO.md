@@ -2,41 +2,78 @@
 
 ## Pending
 
-### Two-level template system (system + user) with decoupled templates path
+### Slurm GPU passthrough via VFIO or GIM/SR-IOV
 
-Currently `templates.yaml` must live in the same directory as `vmocs.yaml`. This
-prevents cluster admins from placing templates in a shared path, and there is no
-per-user template support.
+Enable `--gres=gpu:N` to transparently pass allocated GPUs into the VM via VFIO
+(exclusive full passthrough) or AMD GIM SR-IOV virtual functions (shared).
 
-**Goal:** Mirror pcocc's pattern — system templates loaded first (required), user
-templates merged on top (optional, silently skipped if absent).
+---
 
-**Files to change:**
+**How Slurm exposes the allocation:**
 
-- `lib/vmocs/config.py` line 39 — replace `self.templates_path` with two attrs:
-  - `self.system_templates_path` — `$VMOCS_SYSTEM_CONF_DIR/templates.yaml`
-    (falls back to dirname of config file if env var not set)
-  - `self.user_templates_path` — `~/.vmocs/templates.yaml`
+`--gres=gpu:1` sets `SLURM_STEP_GPUS=0` (index of the allocated GPU). For VM
+passthrough we need the PCI BDF (`0000:41:00.0`), not a device file.
 
-- `lib/vmocs/templates.py` `TemplateConfig.load()` — add `required=True` parameter;
-  when `required=False` and file is absent (`errno.ENOENT`), silently return instead
-  of raising `InvalidConfigError`. Duplicate names across loads still raise an error.
+---
 
-- `lib/vmocs/cli.py` `_load()` — call `tpls.load()` twice:
-  ```python
-  tpls.load(cfg.system_templates_path, required=True)
-  tpls.load(cfg.user_templates_path, required=False)
-  ```
+**Chosen design: static driver + manual `gres.conf`**
 
-**Behaviour:**
+Driver binding is a node configuration decision, not a per-job decision. The
+admin binds GPUs to `vfio-pci` or enables GIM VFs once at node setup, then
+declares the resulting device files in `gres.conf`:
 
-| Scenario | Result |
-|---|---|
-| `/etc/vmocs/templates.yaml` exists | Loaded as system templates (required) |
-| `VMOCS_SYSTEM_CONF_DIR=/shared/cluster/vmocs` set | Loads from that path instead |
-| `~/.vmocs/templates.yaml` exists | Merged on top (optional) |
-| `~/.vmocs/templates.yaml` absent | Silently skipped |
-| Duplicate name in system + user | `InvalidConfigError` raised |
+```ini
+# VFIO-bound GPU (full exclusive passthrough)
+Name=gpu File=/dev/vfio/0
+
+# GIM virtual functions (shared passthrough, one VF per job)
+Name=gpu File=/dev/dri/renderD192,/dev/dri/renderD193
+```
+
+Slurm allocates a device file to the job, sets `SLURM_STEP_GPUS`, and restricts
+the cgroup. The plugin reads the allocated device file, follows the sysfs symlink
+to get the BDF, and passes `--pci <BDF>` to `vmocs launch`. No runtime driver
+rebinding, no privileged hook, no restore-on-exit logic.
+
+**Plugin job is trivial:**
+```
+SLURM_STEP_GPUS=0
+→ device file from gres.conf: /dev/vfio/0
+→ /sys/class/.../device → 0000:41:00.0
+→ vmocs launch base-ubuntu --pci 0000:41:00.0
+```
+
+**Tradeoff:** GPU role is static — a VFIO-configured GPU cannot simultaneously
+run host compute jobs. Acceptable for HPC nodes with fixed roles.
+
+---
+
+**Alternative: dynamic driver rebind per job**
+
+For nodes where GPUs need to serve both host compute and VM passthrough at
+different times, the plugin can rebind the driver at job start and restore it at
+exit. This requires a privileged `slurm_spank_task_init_privileged` hook:
+
+1. Unbind GPU from `amdgpu`: write BDF to `.../driver/unbind`
+2. Bind to `vfio-pci`: write `vfio-pci` to `.../driver_override`, then `.../bind`
+3. Save original driver to `runtime_dir/vfio_state.json`
+4. `vmocs launch --pci <BDF>`
+5. On exit: reverse — unbind vfio-pci, restore original driver
+
+More flexible but more complex: requires root in the plugin, careful cleanup on
+failure, and the GPU must be idle (no host processes using it) when the job starts.
+
+---
+
+**What needs to be built (static design):**
+
+| Component | File | Action |
+|-----------|------|--------|
+| GPU index → device file → BDF | `lib/vmocs/slurm.py` | `gpu_pci_addresses()`: read `SLURM_STEP_GPUS`, resolve device file from gres assignment, follow sysfs symlink to BDF |
+| SPANK plugin | `plugins/slurm/spank_vmocs.c` | Read `SLURM_STEP_GPUS`, append `--pci <BDF>` per GPU to the `vmocs launch` command |
+
+For GIM: VF device files are pre-created by the GIM driver and listed in
+`gres.conf` — no extra vmocs code needed beyond reading `SLURM_STEP_GPUS`.
 
 ### QMP event watcher — reboot-survives, shutdown-ends-job
 

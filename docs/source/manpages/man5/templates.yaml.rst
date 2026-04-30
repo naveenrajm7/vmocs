@@ -6,7 +6,7 @@ templates.yaml
 Synopsis
 --------
 
-``confs/templates.yaml``
+``/etc/vmocs/templates.yaml``, ``~/.vmocs/templates.yaml``
 
 Description
 -----------
@@ -14,6 +14,41 @@ Description
 Defines named VM templates.  Each template is a YAML mapping of settings.
 Templates can inherit from another template via the ``inherits:`` field;
 child settings override parent settings.
+
+Template Locations
+------------------
+
+vmocs loads templates from two sources, in order:
+
+1. **System templates** (required) — the path is resolved as follows:
+
+   a. ``VMOCS_TEMPLATES`` environment variable
+   b. ``templates:`` key in ``vmocs.yaml``
+   c. Same directory as ``vmocs.yaml`` (fallback)
+
+2. **User templates** (optional) — ``~/.vmocs/templates.yaml``.
+   Loaded silently if present; skipped without error if absent.
+   When user templates are found, vmocs prints a notice to stderr::
+
+      Note: merging 2 user template(s) from /home/user/.vmocs/templates.yaml
+
+Template names must be unique across both files.  Defining the same name in
+both system and user templates is an error.
+
+Cluster deployments
+~~~~~~~~~~~~~~~~~~~
+
+For a shared cluster, set the system templates path in ``vmocs.yaml``::
+
+   templates: /cluster/vmocs/config/templates.yaml
+
+All users on the cluster then share those templates automatically.  Individual
+users can add personal templates in ``~/.vmocs/templates.yaml`` without
+modifying the cluster file.
+
+To override the path at runtime without editing ``vmocs.yaml``::
+
+   VMOCS_TEMPLATES=/other/path/templates.yaml vmocs template list
 
 Fields
 ------

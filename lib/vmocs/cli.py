@@ -8,8 +8,6 @@ import signal
 import subprocess
 import sys
 import threading
-import time
-
 import click
 
 from . import __version__, VmocsError
@@ -204,42 +202,6 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
     if detach:
         return
 
-    # Install SIGTERM/SIGINT handler before any blocking call so it covers
-    # both the --ssh path and the plain blocking path (mirrors main's approach
-    # where one handler guards the whole post-detach section).
-    _attempts = [0]
-    _timer    = [None]
-
-    def _cancel_timer():
-        if _timer[0]:
-            _timer[0].cancel()
-            _timer[0] = None
-
-    def _send_qmp(fn):
-        def _run():
-            try:
-                mon = QemuMonitor(qmp_socket)
-                fn(mon)
-                mon.close()
-            except Exception:
-                pass
-        threading.Thread(target=_run, daemon=True).start()
-
-    def _on_signal(signum, frame):
-        _cancel_timer()
-        _attempts[0] += 1
-        if _attempts[0] < 3:
-            _send_qmp(lambda m: m._validate('{"execute": "system_powerdown"}\n\n'))
-            _timer[0] = threading.Timer(10, os.kill, [os.getpid(), signal.SIGTERM])
-            _timer[0].daemon = True
-            _timer[0].start()
-        else:
-            _send_qmp(lambda m: m.quit())
-            threading.Timer(5, os.kill, [qemu_pid, 9]).start()
-
-    signal.signal(signal.SIGTERM, _on_signal)
-    signal.signal(signal.SIGINT, _on_signal)
-
     if open_ssh:
         # subprocess (not execvp) so we return here when the session ends
         subprocess.call([
@@ -253,14 +215,8 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
         _graceful_shutdown(qmp_socket, qemu_pid)
         sys.exit(0)
 
-    # Block until QEMU exits: Slurm SIGTERM, vmocs stop, or guest poweroff.
-    try:
-        os.waitpid(qemu_pid, 0)
-    except ChildProcessError:
-        pass
-    finally:
-        _cancel_timer()
-        shutil.rmtree(runtime_dir, ignore_errors=True)
+    _block_until_exit(qemu_pid, qmp_socket)
+    shutil.rmtree(runtime_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

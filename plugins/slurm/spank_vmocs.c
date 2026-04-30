@@ -5,7 +5,7 @@
  * Minimal vmocs SPANK plugin.
  *
  * Hooks used:
- *   slurm_spank_init          — register --vm-image option
+ *   slurm_spank_init          — register --vm-image and --vm-save options
  *   slurm_spank_init_post_opt — propagate template name into job env (allocator)
  *   slurm_spank_task_init     — vmocs launch <template> ... (blocking, job user)
  *   slurm_spank_exit          — vmocs stop <jobid>         (best-effort cleanup)
@@ -33,6 +33,7 @@ SPANK_PLUGIN(vmocs, 1);
 
 static int  vm_enabled          = 0;
 static char vm_template[256]    = "";
+static char vm_save_path[1024]  = "";
 
 /* -------------------------------------------------------------------------
  * Option handler — called when --vm-image is seen
@@ -46,6 +47,13 @@ static int opt_vm_image(int val, const char *optarg, int remote)
     return ESPANK_SUCCESS;
 }
 
+static int opt_vm_save(int val, const char *optarg, int remote)
+{
+    strncpy(vm_save_path, optarg, sizeof(vm_save_path) - 1);
+    vm_save_path[sizeof(vm_save_path) - 1] = '\0';
+    return ESPANK_SUCCESS;
+}
+
 static struct spank_option vmocs_options[] = {
     {
         "vm-image",
@@ -54,6 +62,14 @@ static struct spank_option vmocs_options[] = {
         1,                              /* has_arg */
         0,                              /* val (unused) */
         (spank_opt_cb_f) opt_vm_image
+    },
+    {
+        "vm-save",
+        "PATH",
+        "Flatten VM disk into a new qcow2 image when the job ends",
+        1,                              /* has_arg */
+        0,                              /* val (unused) */
+        (spank_opt_cb_f) opt_vm_save
     },
     SPANK_OPTIONS_TABLE_END
 };
@@ -148,7 +164,13 @@ static long get_memory_mb(spank_t sp)
 
 int slurm_spank_init(spank_t sp, int ac, char **av)
 {
-    return spank_option_register(sp, vmocs_options);
+    int i, rc;
+    for (i = 0; vmocs_options[i].name; i++) {
+        rc = spank_option_register(sp, &vmocs_options[i]);
+        if (rc != ESPANK_SUCCESS)
+            return rc;
+    }
+    return ESPANK_SUCCESS;
 }
 
 int slurm_spank_init_post_opt(spank_t sp, int ac, char **av)
@@ -210,14 +232,18 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
 int slurm_spank_exit(spank_t sp, int ac, char **av)
 {
     uint32_t jobid = 0;
-    char     cmd[256];
+    char     cmd[1536];
 
     if (!vm_enabled)                          return ESPANK_SUCCESS;
     if (spank_context() != S_CTX_REMOTE)     return ESPANK_SUCCESS;
 
     spank_get_item(sp, S_JOB_ID, &jobid);
-    snprintf(cmd, sizeof(cmd), "%s %s stop %u",
-             vmocs_bin(ac, av), vmocs_conf_arg(ac, av), jobid);
+    if (vm_save_path[0])
+        snprintf(cmd, sizeof(cmd), "%s %s stop %u --save %s",
+                 vmocs_bin(ac, av), vmocs_conf_arg(ac, av), jobid, vm_save_path);
+    else
+        snprintf(cmd, sizeof(cmd), "%s %s stop %u",
+                 vmocs_bin(ac, av), vmocs_conf_arg(ac, av), jobid);
     run_and_wait(cmd);
 
     return ESPANK_SUCCESS;

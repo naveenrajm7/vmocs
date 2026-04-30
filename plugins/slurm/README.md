@@ -52,12 +52,13 @@ optional spank_vmocs.so vmocs_path=/opt/vmocs vmocs_conf=/etc/vmocs/vmocs.yaml
 
 ## Usage
 
-Once installed, `--vm-image` appears in `srun --help`:
+Once installed, both options appear in `srun --help`:
 
 ```
 $ srun --help
 ...
       --vm-image=TEMPLATE     Boot a VM with the specified vmocs template name
+      --vm-save=PATH          Flatten VM disk into a new qcow2 image when the job ends
 ```
 
 ### Resource mapping
@@ -82,6 +83,10 @@ guest OS will see ~3.6 GB after kernel/firmware consumption.
 ```bash
 # Boot a VM and hold the allocation — VM stays up until you cancel the job
 $ srun --vm-image base-ubuntu sleep infinity
+
+# Save VM disk state after the job ends — all changes inside the VM are
+# flattened into a new standalone qcow2 image
+$ srun --vm-image base-ubuntu --vm-save /shared/images/base-ubuntu-modified.qcow2 sleep infinity
 Launching VM from template 'base-ubuntu' (2 cores, 1792 MB)...
 VM ready  job_id=855  ssh -i /tmp/vmocs/855/id_ed25519 -p 60222 ubuntu@127.0.0.1
 

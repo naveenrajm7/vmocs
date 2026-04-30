@@ -76,6 +76,20 @@ static const char *vmocs_bin(int ac, char **av)
     return "vmocs";
 }
 
+/* Return "--config <path>" fragment from vmocs_conf= arg, or "" if not set. */
+static const char *vmocs_conf_arg(int ac, char **av)
+{
+    static char buf[576];
+    int i;
+    for (i = 0; i < ac; i++) {
+        if (strncmp(av[i], "vmocs_conf=", 11) == 0) {
+            snprintf(buf, sizeof(buf), "--config %s", av[i] + 11);
+            return buf;
+        }
+    }
+    return "";
+}
+
 /* Fork /bin/sh -c cmd, wait for it, return exit code. */
 static int run_and_wait(const char *cmd)
 {
@@ -175,12 +189,14 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
 
     if (mem_mb > 0) {
         snprintf(cmd, sizeof(cmd),
-                 "%s launch %s --cores %ld --memory %ld --job-id %u",
-                 vmocs_bin(ac, av), vm_template, cores, mem_mb, jobid);
+                 "%s %s launch %s --cores %ld --memory %ld --job-id %u",
+                 vmocs_bin(ac, av), vmocs_conf_arg(ac, av),
+                 vm_template, cores, mem_mb, jobid);
     } else {
         snprintf(cmd, sizeof(cmd),
-                 "%s launch %s --cores %ld --job-id %u",
-                 vmocs_bin(ac, av), vm_template, cores, jobid);
+                 "%s %s launch %s --cores %ld --job-id %u",
+                 vmocs_bin(ac, av), vmocs_conf_arg(ac, av),
+                 vm_template, cores, jobid);
     }
 
     return run_and_wait(cmd) == 0 ? ESPANK_SUCCESS : ESPANK_ERROR;
@@ -200,7 +216,8 @@ int slurm_spank_exit(spank_t sp, int ac, char **av)
     if (spank_context() != S_CTX_REMOTE)     return ESPANK_SUCCESS;
 
     spank_get_item(sp, S_JOB_ID, &jobid);
-    snprintf(cmd, sizeof(cmd), "%s stop %u", vmocs_bin(ac, av), jobid);
+    snprintf(cmd, sizeof(cmd), "%s %s stop %u",
+             vmocs_bin(ac, av), vmocs_conf_arg(ac, av), jobid);
     run_and_wait(cmd);
 
     return ESPANK_SUCCESS;

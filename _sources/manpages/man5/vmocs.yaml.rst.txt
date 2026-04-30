@@ -39,6 +39,24 @@ Fields
 
    Default: ``/var/run/vmocs``
 
+.. describe:: templates
+
+   Path to the system-wide templates file.  When set, vmocs loads VM templates
+   from this path instead of looking next to ``vmocs.yaml``.
+
+   The full resolution order for the templates path is:
+
+   1. ``VMOCS_TEMPLATES`` environment variable (highest priority)
+   2. This ``templates:`` key
+   3. Same directory as ``vmocs.yaml`` (default fallback)
+
+   User templates at ``~/.vmocs/templates.yaml`` are always merged on top,
+   regardless of which path is used for system templates.
+
+   Example::
+
+      templates: /cluster/vmocs/config/templates.yaml
+
 .. describe:: gpu-devices
 
    List of PCI BDF addresses for GPU devices available for passthrough.
@@ -68,6 +86,7 @@ Example
 
    qemu-bin: /usr/bin/qemu-system-x86_64
    runtime-dir: /tmp/vmocs
+   templates: /cluster/vmocs/config/templates.yaml
 
    gpu-devices: []
 

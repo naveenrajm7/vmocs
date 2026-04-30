@@ -123,6 +123,25 @@ keys) is stored.  vmocs creates one subdirectory per running VM.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">templates</span></span></dt>
+<dd><p>Path to the system-wide templates file.  When set, vmocs loads VM templates
+from this path instead of looking next to <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>.</p>
+<p>The full resolution order for the templates path is:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">VMOCS_TEMPLATES</span></code> environment variable (highest priority)</p></li>
+<li><p>This <code class="docutils literal notranslate"><span class="pre">templates:</span></code> key</p></li>
+<li><p>Same directory as <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code> (default fallback)</p></li>
+</ol>
+<p>User templates at <code class="docutils literal notranslate"><span class="pre">~/.vmocs/templates.yaml</span></code> are always merged on top,
+regardless of which path is used for system templates.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">templates</span><span class="p">:</span> <span class="o">/</span><span class="n">cluster</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">gpu-devices</span></span></dt>
 <dd><p>List of PCI BDF addresses for GPU devices available for passthrough.
 Currently informational — passthrough is requested per-launch with
@@ -151,6 +170,7 @@ which vmocs allocates a host port for SSH forwarding into the guest.</p>
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading"></a></h2>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">qemu-bin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/bin/qemu-system-x86_64</span>
 <span class="nt">runtime-dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/tmp/vmocs</span>
+<span class="nt">templates</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/cluster/vmocs/config/templates.yaml</span>
 
 <span class="nt">gpu-devices</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
 

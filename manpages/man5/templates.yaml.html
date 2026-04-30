@@ -49,6 +49,10 @@
 <li class="toctree-l2 current"><a class="current reference internal" href="#">templates.yaml</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#description">Description</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#template-locations">Template Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#cluster-deployments">Cluster deployments</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#fields">Fields</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#examples">Examples</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#see-also">See Also</a></li>
@@ -87,13 +91,49 @@
 <span id="vmocs-templates-yaml-5"></span><h1>templates.yaml<a class="headerlink" href="#templates-yaml" title="Link to this heading"></a></h1>
 <section id="synopsis">
 <h2>Synopsis<a class="headerlink" href="#synopsis" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">confs/templates.yaml</span></code></p>
+<p><code class="docutils literal notranslate"><span class="pre">/etc/vmocs/templates.yaml</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.vmocs/templates.yaml</span></code></p>
 </section>
 <section id="description">
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h2>
 <p>Defines named VM templates.  Each template is a YAML mapping of settings.
 Templates can inherit from another template via the <code class="docutils literal notranslate"><span class="pre">inherits:</span></code> field;
 child settings override parent settings.</p>
+</section>
+<section id="template-locations">
+<h2>Template Locations<a class="headerlink" href="#template-locations" title="Link to this heading"></a></h2>
+<p>vmocs loads templates from two sources, in order:</p>
+<ol class="arabic">
+<li><p><strong>System templates</strong> (required) — the path is resolved as follows:</p>
+<ol class="loweralpha simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">VMOCS_TEMPLATES</span></code> environment variable</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">templates:</span></code> key in <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code></p></li>
+<li><p>Same directory as <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code> (fallback)</p></li>
+</ol>
+</li>
+<li><p><strong>User templates</strong> (optional) — <code class="docutils literal notranslate"><span class="pre">~/.vmocs/templates.yaml</span></code>.
+Loaded silently if present; skipped without error if absent.
+When user templates are found, vmocs prints a notice to stderr:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Note</span><span class="p">:</span> <span class="n">merging</span> <span class="mi">2</span> <span class="n">user</span> <span class="n">template</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="kn">from</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span><span class="o">/.</span><span class="n">vmocs</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+</li>
+</ol>
+<p>Template names must be unique across both files.  Defining the same name in
+both system and user templates is an error.</p>
+<section id="cluster-deployments">
+<h3>Cluster deployments<a class="headerlink" href="#cluster-deployments" title="Link to this heading"></a></h3>
+<p>For a shared cluster, set the system templates path in <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">templates</span><span class="p">:</span> <span class="o">/</span><span class="n">cluster</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+<p>All users on the cluster then share those templates automatically.  Individual
+users can add personal templates in <code class="docutils literal notranslate"><span class="pre">~/.vmocs/templates.yaml</span></code> without
+modifying the cluster file.</p>
+<p>To override the path at runtime without editing <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VMOCS_TEMPLATES</span><span class="o">=/</span><span class="n">other</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span> <span class="n">vmocs</span> <span class="n">template</span> <span class="nb">list</span>
+</pre></div>
+</div>
+</section>
 </section>
 <section id="fields">
 <h2>Fields<a class="headerlink" href="#fields" title="Link to this heading"></a></h2>

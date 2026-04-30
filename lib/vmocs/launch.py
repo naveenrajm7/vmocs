@@ -187,9 +187,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
     qemu_pid = os.fork()
     if qemu_pid == 0:
         os.setpgid(0, 0)
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 1)
-        os.dup2(devnull, 2)
+        logfd = os.open(os.path.join(runtime_dir, 'qemu.log'),
+                        os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        os.dup2(logfd, 1)
+        os.dup2(logfd, 2)
         os.execvp(cmd[0], cmd)
 
     # 6. Connect QMP and start VM (pcocc:1676-1723)
@@ -197,7 +198,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         mon = wait_for_monitor(qmp_socket, timeout=30)
     except HypervisorError:
         os.waitpid(qemu_pid, 0)
-        raise HypervisorError('QEMU failed to start (QMP timeout)')
+        raise HypervisorError(
+            f'QEMU failed to start (QMP timeout); see {runtime_dir}/qemu.log')
 
     # Snapshot restore: wait for incoming migration to finish, then cont (pcocc:1713-1723)
     if using_snapshot:

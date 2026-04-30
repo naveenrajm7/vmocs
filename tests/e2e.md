@@ -162,6 +162,45 @@ flattens the COW overlay into a self-contained qcow2.
 
 ---
 
+## 7. Slurm resource inheritance
+
+Verifies that the VM receives the CPU count and memory that Slurm allocated,
+with the expected headroom deduction for QEMU overhead.
+
+Launch a VM via `srun` with explicit resources in the background, wait for it
+to appear in `vmocs list`, then SSH in to inspect what the guest sees:
+
+```bash
+srun -c 4 --mem=4G --vm-image base-ubuntu sleep infinity > /tmp/vmocs-srun.out 2>&1 &
+
+# Wait for VM to be ready
+until vmocs list 2>/dev/null | grep -q running; do sleep 3; done
+vmocs list
+```
+
+Once running, read the job ID and SSH port from `vmocs list`, then:
+
+```bash
+KEY=/tmp/vmocs/<N>/id_ed25519
+
+ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -p <PORT> ubuntu@127.0.0.1 'nproc && free -m'
+```
+
+Expected:
+- `nproc` → `4`
+- `free -m` total → ~3663 MB (4096 MB minus headroom: max(5%, 256 MB) = 256 MB
+  deducted by the SPANK plugin before passing `--memory` to vmocs, plus ~177 MB
+  consumed by the guest kernel/firmware)
+
+Cancel when done:
+
+```bash
+scancel <JOBID>
+```
+
+---
+
 ## Runtime layout (for reference)
 
 ```

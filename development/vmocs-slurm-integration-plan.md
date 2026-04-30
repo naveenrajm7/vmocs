@@ -2,197 +2,132 @@
 
 ## Context
 
-vmocs is a lightweight QEMU/KVM wrapper for HPC jobs. The VM lifecycle (`launch_vm`, `teardown_vm`, `build_qemu_cmdline`) is fully implemented and tested. Now we need to wire vmocs into Slurm's SPANK plugin lifecycle so that running `srun --vm-image ubuntu-gpu ./script.sh` transparently boots a VM with Slurm-allocated resources, runs the user's command inside it, and tears down on exit.
+vmocs is a lightweight QEMU/KVM wrapper for HPC jobs. The VM lifecycle (`launch_vm`, `teardown_vm`, `build_qemu_cmdline`) is fully implemented and tested. The goal is to wire vmocs into Slurm's SPANK plugin lifecycle so that `srun --vm-image <template>` transparently boots a VM with Slurm-allocated resources and tears down on exit.
 
-We follow pcocc's integration pattern (`plugins/slurm/vm-setup.lua` + `Batch.py`) but simplified: vmocs handles a single VM per Slurm task, has no etcd, no multi-node clusters, and no rank mapping.
-
----
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `lib/vmocs/slurm.py` | Create | Read Slurm env vars, map GPU indices to PCI addrs |
-| `lib/vmocs/vfio.py` | Create | VFIO bind/unbind via sysfs |
-| `lib/vmocs/cli.py` | Modify | Add `internal` subgroup (setup, teardown, setup-vfio) |
-| `plugins/slurm/vm-setup.lua` | Create | Lua SPANK plugin |
-| `plugins/slurm/vmocs.conf` | Create | Slurm plugstack.conf.d entry |
-| `tests/test_slurm.py` | Create | Unit tests for slurm.py |
-| `tests/test_vfio.py` | Create | Unit tests for vfio.py |
+We follow pcocc's integration pattern but simplified: vmocs handles a single VM per Slurm task, has no etcd, no multi-node clusters, and no rank mapping.
 
 ---
 
-## Phase 1: `lib/vmocs/slurm.py` — Slurm Resource Reader
+## What Was Built (slurm-integration branch)
 
-Pure functions to read Slurm environment and translate to `launch_vm()` parameters.
+### C SPANK Plugin — `plugins/slurm/spank_vmocs.c` ✅
 
-**Functions:**
-
-1. **`job_id() -> int`** — `int(os.environ['SLURM_JOB_ID'])`. Raise `VmocsError` if unset.
-
-2. **`num_cores() -> int`** — `int(os.environ.get('SLURM_CPUS_PER_TASK', '1'))`.
-   Reference: pcocc `Batch.py:1926`.
-
-3. **`memory_mb() -> int`** — Three-tier fallback:
-   - `SLURM_MEM_PER_NODE` env var (in MB, direct)
-   - `scontrol show jobid=$SLURM_JOB_ID` → parse `MinMemoryCPU=XM`/`MinMemoryCPU=XG` or `MinMemoryNode=XM`/`MinMemoryNode=XG` (same regex as pcocc `Batch.py:1894-1914`)
-   - cgroup v2: read `/sys/fs/cgroup/memory.max`, convert bytes→MB
-   - Subtract headroom (256 MB or 5%, whichever is larger) for QEMU overhead
-
-4. **`gpu_indices() -> list[int]`** — Parse `SLURM_STEP_GPUS` first (more precise), then `SLURM_JOB_GPUS`. Split on commas, return sorted int list. Empty list if neither set.
-
-5. **`map_gpu_indices_to_pci(indices, gpu_devices) -> list[str]`** — Index into the ordered `gpu-devices` list from `vmocs.yaml`. Raise `VmocsError` if index out of range.
-
-**Tests:** `tests/test_slurm.py` — mock `os.environ` and subprocess output for each fallback path.
-
----
-
-## Phase 2: `lib/vmocs/vfio.py` — VFIO Bind/Unbind
-
-Two functions operating on sysfs. Runs as root (called from `task_init_privileged`).
-
-1. **`bind_vfio(pci_addr) -> str|None`** — Returns original driver name.
-   - Read current driver: `os.readlink('/sys/bus/pci/devices/{addr}/driver')` → `basename`
-   - Unbind: write `addr` to `.../driver/unbind`
-   - Override: write `vfio-pci` to `.../driver_override`
-   - Bind: write `addr` to `/sys/bus/pci/drivers/vfio-pci/bind`
-
-2. **`unbind_vfio(pci_addr, restore_driver)`** — Reverse the bind.
-   - Unbind from vfio-pci
-   - Clear `driver_override`
-   - If `restore_driver` is not None, rebind to original
-
-Wrap `OSError` with `HypervisorError` including the PCI address and a note about root requirement on EPERM.
-
-**Tests:** `tests/test_vfio.py` — mock sysfs reads/writes, verify correct paths and order.
-
----
-
-## Phase 3: CLI `internal` Subgroup in `lib/vmocs/cli.py`
-
-Add a hidden Click group for commands that the SPANK plugin calls. These are not user-facing.
-
-### Refactor first: Extract SIGTERM handler
-
-The existing `launch` command (lines 149-211) has SIGTERM handler + waitpid logic. Extract into a shared helper:
-
-```python
-def _block_until_exit(meta):
-    """Install SIGTERM handler with ACPI-powerdown escalation, then waitpid."""
-```
-
-Both `launch` and `internal setup` use this.
-
-### Commands:
-
-#### `vmocs internal setup <template_name>`
-Called from SPANK `task_init` (job user, inside Slurm cgroup).
-
-1. `slurm.job_id()`, `slurm.num_cores()`, `slurm.memory_mb()`
-2. `slurm.gpu_indices()` → `slurm.map_gpu_indices_to_pci(indices, cfg.gpu_devices)`
-3. `launch_vm(cfg, tpl, cores, memory_mb, job_id, pci_devices=pci_addrs)`
-4. `_block_until_exit(meta)` — blocks until QEMU exits
-5. Clean up runtime dir on exit
-
-#### `vmocs internal teardown`
-Called from SPANK `exit` hook.
-
-1. Read `SLURM_JOB_ID` → find runtime dir
-2. If `vfio_state.json` exists, call `vfio.unbind_vfio()` for each device (skip with warning if not root)
-3. `teardown_vm(job_id, runtime_base=cfg.runtime_dir)`
-
-#### `vmocs internal setup-vfio <template_name>`
-Called from SPANK `task_init_privileged` (root).
-
-1. `slurm.gpu_indices()` → `slurm.map_gpu_indices_to_pci()`
-2. For each PCI addr: `vfio.bind_vfio(addr)`
-3. Write `{addr: original_driver}` to `/run/vmocs/<job_id>/vfio_state.json`
-
----
-
-## Phase 4: `plugins/slurm/vm-setup.lua` — SPANK Plugin
-
-Lua SPANK plugin following pcocc's `vm-setup.lua` pattern but without stepid tracking or multi-step coordination.
-
-**Hooks:**
+Minimal C plugin with four hooks:
 
 | Hook | Action |
 |------|--------|
-| `slurm_spank_init` | Register `--vm-image` option |
-| `option_handler` | Set `vm_enabled=true`, `vm_option=optarg` |
-| `slurm_spank_init_post_opt` | Allocator: `job_control_setenv("VMOCS_TEMPLATE", vm_option)`; Remote: `replicate_slurm_vars()` |
-| `slurm_spank_task_init_privileged` | `vmocs internal setup-vfio <template>` |
-| `slurm_spank_task_init` | `vmocs internal setup <template>` (blocks until VM exits) |
-| `slurm_spank_exit` | `vmocs internal teardown` (remote context only) |
+| `slurm_spank_init` | Register `--vm-image=TEMPLATE` option |
+| `slurm_spank_init_post_opt` | Allocator context: persist `VMOCS_TEMPLATE` into job env via `spank_job_control_setenv` |
+| `slurm_spank_task_init` | Fork `vmocs launch <template> --cores N --memory M --job-id J` and waitpid (blocking) |
+| `slurm_spank_exit` | Fork `vmocs stop <jobid>` — best-effort cleanup, remote context only |
 
-**Helper functions** (from pcocc):
-- `do_and_log_output(cmd)` — Execute via `io.popen`, log lines
-- `setenv(name, val)` — `posix.setenv` wrapper
-- `replicate_var(spank, slurm_name, env_name)` — `spank:get_item` → `setenv`
-- `replicate_env(spank, slurm_name, env_name)` — `spank:getenv` → `setenv`
-- `replicate_slurm_vars(spank)` — Replicate: `SLURM_JOB_ID`, `SLURM_JOB_UID`, `SLURM_CPUS_PER_TASK`, `SLURM_MEM_PER_NODE`, `SLURM_STEP_GPUS`, `VMOCS_TEMPLATE`
+Memory is read from `SLURM_MEM_PER_NODE` or `SLURM_MEM_PER_CPU × SLURM_CPUS_PER_TASK`, with a headroom deduction (5% or 256 MB, whichever is larger) for QEMU overhead. Supports `vmocs_path=/prefix` plugin arg so the binary does not need to be on `PATH`.
 
-**Omitted vs pcocc:** No `job_prolog`/`job_epilog` (no stepid tracking needed). No pcocc_path discovery (vmocs assumed on PATH or configured via plugin args).
+Compiled with `make -C plugins/slurm`, installed to `/usr/lib64/slurm/spank_vmocs.so`.
+
+### Lua Reference Plugin — `plugins/slurm/vm-setup.lua` ✅
+
+Equivalent Lua plugin kept for reference. Requires `spank_lua.so` which is not part of upstream Slurm — the C plugin is used in production.
+
+### Plugin Config — `/etc/slurm/plugstack.conf` ✅
+
+Appended to the existing plugstack alongside pyxis:
+```
+required  spank_pyxis.so
+optional  spank_vmocs.so vmocs_path=/path/to/vmocs/.venv
+```
+
+### System Config — `/etc/vmocs/vmocs.yaml` + `/etc/vmocs/templates.yaml` ✅
+
+vmocs config resolution order: `VMOCS_CONF` env var → `confs/vmocs.yaml` in cwd → `/etc/vmocs/vmocs.yaml`. The system-wide config at `/etc/vmocs/` is used when the SPANK plugin runs `vmocs launch` (cwd is not the repo directory).
+
+### CLI cleanup — `lib/vmocs/cli.py` ✅
+
+- Extracted `_block_until_exit(qemu_pid, qmp_socket)` helper with 3-attempt SIGTERM escalation (ACPI powerdown × 2 → QMP quit + SIGKILL fallback)
+- `launch` command calls the helper instead of inlining the logic
+- Dropped unused `import time`
+
+### QEMU logging — `lib/vmocs/launch.py` ✅
+
+QEMU stdout/stderr redirected to `runtime_dir/qemu.log` instead of `/dev/null`. File is cleaned up by `vmocs stop`. Error message on QMP timeout includes the log path.
 
 ---
 
-## Phase 5: `plugins/slurm/vmocs.conf` — Plugin Installation
-
-Single line:
-```
-optional /usr/lib64/slurm/spank_lua.so /etc/slurm/lua.d/vm-setup.lua
-```
-
-Installed to `/etc/slurm/plugstack.conf.d/vmocs.conf` on compute nodes.
-
----
-
-## Implementation Order
+## End-to-End Flow (as implemented)
 
 ```
-Phase 1 (slurm.py) ──┐
-                      ├── Phase 3 (cli.py internal) ── Phase 4 (Lua) ── Phase 5 (conf)
-Phase 2 (vfio.py) ───┘
-```
-
-Phases 1 and 2 are independent and can be done in parallel.
-
----
-
-## End-to-End Flow
-
-```
-srun --vm-image ubuntu-gpu -c4 --mem=8G --gres=gpu:1 ./my_script.sh
+srun -c2 --mem=4G --vm-image base-ubuntu <user-command>
   │
   ├─ SPANK init: register --vm-image
-  ├─ SPANK init_post_opt (allocator): set VMOCS_TEMPLATE=ubuntu-gpu in job env
+  ├─ SPANK init_post_opt (allocator): set VMOCS_TEMPLATE=base-ubuntu in job env
   │
-  ├─ [on compute node]
-  ├─ SPANK init_post_opt (remote): replicate SLURM_JOB_ID, SLURM_CPUS_PER_TASK, etc.
-  ├─ SPANK task_init_privileged (root):
-  │   └─ vmocs internal setup-vfio ubuntu-gpu
-  │       └─ bind GPU 0 → vfio-pci, write vfio_state.json
-  ├─ SPANK task_init (job user, inside Slurm cgroup):
-  │   └─ vmocs internal setup ubuntu-gpu
-  │       ├─ Read: cores=4, mem=8192MB(-headroom), gpu=[0000:41:00.0]
-  │       ├─ launch_vm(cfg, tpl, 4, 7936, job_id, pci_devices=['0000:41:00.0'])
-  │       │   ├─ COW overlay, cloud-init ISO, fork/exec QEMU (inherits cgroup)
-  │       │   ├─ QMP connect, cont(), wait SSH
-  │       │   └─ Return meta
-  │       └─ waitpid(qemu_pid) — blocks until VM exits
+  ├─ [on compute node, as job user, inside Slurm cgroup]
+  ├─ SPANK task_init:
+  │   └─ vmocs launch base-ubuntu --cores 2 --memory 1792 --job-id <N>
+  │       ├─ COW overlay over base image
+  │       ├─ cloud-init ISO, ephemeral SSH keypair
+  │       ├─ fork/exec QEMU (inherits Slurm cgroup)
+  │       ├─ QMP connect, cont(), wait for SSH
+  │       └─ blocks on waitpid(qemu_pid) ← job stays alive here
   │
-  ├─ SPANK exit (remote):
-  │   └─ vmocs internal teardown
-  │       ├─ kill QEMU, rm runtime dir
-  │       └─ unbind vfio-pci, restore amdgpu
+  ├─ SPANK exit (on job cancel / QEMU exit):
+  │   └─ vmocs stop <N>  — ACPI shutdown, kill QEMU, rm runtime dir
   └─ done
 ```
 
+Verified on a compute node:
+- `srun --vm-image base-ubuntu` → VM boots, `vmocs list` shows it running
+- `scancel` → `slurm_spank_exit` calls `vmocs stop`, runtime dir cleaned up
+- Port allocation is collision-free across concurrent launches (tested with 2 VMs simultaneously)
+
 ---
 
-## Verification
+## Deferred: GPU / VFIO Passthrough
 
-1. **Unit tests**: `pytest tests/test_slurm.py tests/test_vfio.py` — mock-based, no Slurm needed
-2. **Manual test without Slurm**: `vmocs internal setup ubuntu-base` with `SLURM_JOB_ID`, `SLURM_CPUS_PER_TASK`, `SLURM_MEM_PER_NODE` set manually in env — verify it reads them and launches a VM
-3. **Manual test with Slurm**: `srun --vm-image ubuntu-base -c2 --mem=4G hostname` — verify VM boots, SSH works, QEMU inherits cgroup, cleanup on exit
-4. **GPU test**: `srun --vm-image ubuntu-gpu --gres=gpu:1 nvidia-smi` — verify VFIO bind/unbind and GPU visible in guest
+The original plan included `slurm.py` (Slurm env reader), `vfio.py` (sysfs bind/unbind), and a `task_init_privileged` hook for root-level GPU rebinding. These were intentionally deferred — the C plugin handles CPU and memory from Slurm env vars, and GPU support will be added as a follow-on phase.
+
+---
+
+## Open Question: What Does the User Command Do?
+
+When running `srun --vm-image base-ubuntu <user-command>`, the SPANK `task_init` hook blocks with `vmocs launch` for the lifetime of the VM. The user command passed to `srun` is the **Slurm task** that runs after `task_init` returns — but since `task_init` never returns until the VM exits, the user command effectively never runs on the host.
+
+This surfaces a fundamental design choice for how vmocs integrates with Slurm workflows.
+
+### Option A — VM-as-Job (current behavior)
+
+`task_init` boots the VM and blocks. The VM is the job. The user command passed to `srun` is never executed by Slurm — the job's workload is expected to be submitted *into* the VM separately (via SSH, a prolog script, or a job script that SSHs in).
+
+**When this is the right model:**
+- Interactive allocations: `salloc --vm-image base-ubuntu` → user gets a Slurm shell, SSHs into the VM manually
+- Batch jobs where the job script handles SSH internally
+- Persistent VM sessions tied to Slurm's cgroup lifetime
+
+**Current behavior confirmed:** `srun --vm-image base-ubuntu bash -c 'echo hello'` booted the VM successfully (job_id=852, port 60222), but `echo hello` never ran — the job hung until `scancel`.
+
+**What's missing for this option to be usable:**
+- A way to SSH into the running VM from outside the job (e.g., `vmocs ssh <job_id>`)
+- Or a job script pattern that SSHs in after detecting the VM is ready
+
+### Option B — Execute Command Inside VM
+
+`task_init` boots the VM with `--detach`, then SSHs the user's command into the guest and waits for it to finish. The VM is torn down when the command exits.
+
+```
+srun --vm-image base-ubuntu hostname
+  → boots VM, SSHs: ssh -i <key> -p <port> ubuntu@127.0.0.1 hostname
+  → prints guest hostname
+  → tears down VM, job exits
+```
+
+**When this is the right model:**
+- Transparent VM execution: user writes `srun --vm-image ubuntu-gpu ./train.sh` and the script runs inside the VM as if it were a normal job
+- Batch workflows where each job step runs in a fresh isolated VM
+
+**What needs to be built:**
+- Plugin passes `--detach` to `vmocs launch` and captures the SSH connection info from `vm.json`
+- Plugin then SSHs `<user-command>` into the guest, blocks until exit code is returned
+- On exit, plugin calls `vmocs stop`
+- The user command and its arguments need to be forwarded correctly (quoting, env vars)
+
+**Tradeoff vs Option A:** More complex to implement correctly (argument quoting, exit code propagation, stdin/stdout forwarding), but far more useful for batch HPC workloads.

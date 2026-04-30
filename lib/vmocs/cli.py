@@ -23,7 +23,15 @@ from .snapshot import create_snapshot
 def _load(config_path=None):
     cfg = Config(config_path)
     tpls = TemplateConfig()
-    tpls.load(cfg.templates_path)
+    tpls.load(cfg.system_templates_path, required=True)
+    before = len(tpls)
+    tpls.load(cfg.user_templates_path, required=False)
+    added = len(tpls) - before
+    if added:
+        click.echo(
+            f'Note: merging {added} user template(s) from {cfg.user_templates_path}',
+            err=True,
+        )
     return cfg, tpls
 
 

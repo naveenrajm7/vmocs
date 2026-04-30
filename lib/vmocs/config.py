@@ -36,4 +36,12 @@ class Config:
         self.runtime_dir = data.get('runtime-dir', '/var/run/vmocs')
         self.gpu_devices = data.get('gpu-devices', [])
         self.network = data.get('network', {})
-        self.templates_path = os.path.join(os.path.dirname(path), 'templates.yaml')
+        _default_tpl = os.path.join(os.path.dirname(path), 'templates.yaml')
+        self.system_templates_path = (
+            os.environ.get('VMOCS_TEMPLATES')
+            or data.get('templates')
+            or _default_tpl
+        )
+        self.user_templates_path = os.path.join(
+            os.path.expanduser('~'), '.vmocs', 'templates.yaml'
+        )

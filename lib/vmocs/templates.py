@@ -4,6 +4,8 @@
 #  Based on pcocc Templates.py by CEA/DAM/DIF
 #  SPDX-License-Identifier: GPL-3.0-or-later
 
+import errno
+import logging
 import os
 import yaml
 
@@ -47,15 +49,18 @@ TEMPLATE_SETTINGS = {
 class TemplateConfig(dict):
     """Manages the VM template definitions. Adapted from pcocc TemplateConfig."""
 
-    def load(self, path):
+    def load(self, path, required=True):
         try:
             with open(path) as f:
                 data = yaml.safe_load(f) or {}
+        except IOError as e:
+            if not required and e.errno == errno.ENOENT:
+                return
+            raise InvalidConfigError(f'cannot read {path}: {e}')
         except yaml.YAMLError as e:
             raise InvalidConfigError(f'YAML error in {path}: {e}')
-        except IOError as e:
-            raise InvalidConfigError(f'cannot read {path}: {e}')
 
+        logging.debug('Loading templates from %s', path)
         for name, attrs in data.items():
             if name.startswith('_'):
                 raise InvalidConfigError(

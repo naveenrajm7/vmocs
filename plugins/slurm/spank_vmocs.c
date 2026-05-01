@@ -25,6 +25,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <dirent.h>
+#include <fcntl.h>
 
 #include <stdint.h>
 #include <slurm/spank.h>
@@ -158,6 +160,67 @@ static long get_memory_mb(spank_t sp)
     return 0;   /* no memory constraint found; vmocs will use its default */
 }
 
+/*
+ * Scan /dev/vfio/ for numeric group entries accessible in this job's cgroup.
+ * For each accessible group, enumerate every BDF under
+ * /sys/kernel/iommu_groups/<N>/devices/ and append "--pci <BDF>" to buf.
+ *
+ * The cgroup device whitelist is the source of truth: open() succeeds only
+ * for groups Slurm allocated to this job; all others return EPERM.
+ * Passing all BDFs in the group (not just the display-class function) is
+ * required for consumer GPUs where GPU and audio share one IOMMU group.
+ */
+static void collect_pci_args(char *buf, size_t buflen)
+{
+    DIR           *vfio_dir;
+    struct dirent *ent;
+
+    buf[0] = '\0';
+
+    vfio_dir = opendir("/dev/vfio");
+    if (!vfio_dir)
+        return;
+
+    while ((ent = readdir(vfio_dir)) != NULL) {
+        char           dev_path[320];
+        char           grp_path[384];
+        DIR           *grp_dir;
+        struct dirent *dev_ent;
+        char          *endp;
+        int            fd;
+
+        /* Skip non-numeric entries ("vfio", ".", "..") */
+        strtol(ent->d_name, &endp, 10);
+        if (*endp != '\0' || endp == ent->d_name)
+            continue;
+
+        /* Try to open — EPERM means Slurm's cgroup blocks it */
+        snprintf(dev_path, sizeof(dev_path), "/dev/vfio/%s", ent->d_name);
+        fd = open(dev_path, O_RDWR);
+        if (fd < 0)
+            continue;
+        close(fd);
+
+        /* Append --pci <BDF> for every device in this IOMMU group */
+        snprintf(grp_path, sizeof(grp_path),
+                 "/sys/kernel/iommu_groups/%s/devices", ent->d_name);
+        grp_dir = opendir(grp_path);
+        if (!grp_dir)
+            continue;
+
+        while ((dev_ent = readdir(grp_dir)) != NULL) {
+            size_t used;
+            if (dev_ent->d_name[0] == '.')
+                continue;
+            used = strlen(buf);
+            snprintf(buf + used, buflen - used, " --pci %s", dev_ent->d_name);
+        }
+        closedir(grp_dir);
+    }
+
+    closedir(vfio_dir);
+}
+
 /* -------------------------------------------------------------------------
  * SPANK hooks
  * ---------------------------------------------------------------------- */
@@ -196,7 +259,8 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
 {
     uint32_t jobid = 0;
     char     buf[64];
-    char     cmd[1024];
+    char     pci_args[512];
+    char     cmd[2048];
     long     cores  = 1;
     long     mem_mb;
 
@@ -208,17 +272,18 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
         cores = atol(buf);
 
     mem_mb = get_memory_mb(sp);
+    collect_pci_args(pci_args, sizeof(pci_args));
 
     if (mem_mb > 0) {
         snprintf(cmd, sizeof(cmd),
-                 "%s %s launch %s --cores %ld --memory %ld --job-id %u",
+                 "%s %s launch %s --cores %ld --memory %ld --job-id %u%s",
                  vmocs_bin(ac, av), vmocs_conf_arg(ac, av),
-                 vm_template, cores, mem_mb, jobid);
+                 vm_template, cores, mem_mb, jobid, pci_args);
     } else {
         snprintf(cmd, sizeof(cmd),
-                 "%s %s launch %s --cores %ld --job-id %u",
+                 "%s %s launch %s --cores %ld --job-id %u%s",
                  vmocs_bin(ac, av), vmocs_conf_arg(ac, av),
-                 vm_template, cores, jobid);
+                 vm_template, cores, jobid, pci_args);
     }
 
     return run_and_wait(cmd) == 0 ? ESPANK_SUCCESS : ESPANK_ERROR;

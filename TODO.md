@@ -4,9 +4,56 @@
 
 ### Slurm GPU passthrough via VFIO or GIM/SR-IOV
 
+**Status: implemented, end-to-end test pending (node reboot required — GPU wedged
+after failed passthrough attempt; `lspci` shows `rev ff / Unknown header type 7f`).**
+
 Enable `--gres=gpu:N` to transparently pass allocated GPUs into the VM via VFIO
 (exclusive full passthrough) or AMD GIM SR-IOV virtual functions (shared, one VF
 per job).
+
+**What has been built:**
+
+| Component | File | Status |
+|-----------|------|--------|
+| VFIO device → BDF discovery | `plugins/slurm/spank_vmocs.c` `collect_pci_args()` | Done |
+| `--pci <BDF>` injection into launch | `plugins/slurm/spank_vmocs.c` `slurm_spank_task_init()` | Done |
+| gres.conf generation script | `plugins/slurm/gres-conf-gen.py` | Done |
+| Node file permissions | udev rule `99-vfio-kvm.rules` + user in `kvm` group | Done (node-level setup) |
+
+**Node setup steps (one-time per node):**
+```bash
+# 1. Bind GPUs to vfio-pci (driverctl persists across reboots)
+driverctl set-override 0000:03:00.0 vfio-pci
+driverctl set-override 0000:03:00.1 vfio-pci
+
+# 2. udev rule so kvm group members can open vfio devices
+echo 'SUBSYSTEM=="vfio", KERNEL!="vfio", GROUP="kvm", MODE="0660"' \
+    > /etc/udev/rules.d/99-vfio-kvm.rules
+udevadm control --reload && udevadm trigger --subsystem-match=vfio
+
+# 3. Add job users to kvm group
+usermod -aG kvm <user>
+
+# 4. Generate gres.conf File= line
+python3 plugins/slurm/gres-conf-gen.py >> /etc/slurm/gres.conf
+
+# 5. Update slurm-nodes.conf: change gres=gpu:<type>:N → gres=gpu:N
+# 6. Restart slurmctld + slurmd
+```
+
+**Template requirement:** templates used with GPU passthrough must set
+`pci-root-port: true` — without it QEMU crashes with IRQ assertion failure
+(`pci_irq_handler: 0 <= irq_num && irq_num < PCI_NUM_PINS`) on AMD GPUs.
+
+**Remaining: end-to-end passthrough test**
+
+Verify after node reboot:
+```bash
+srun --gres=gpu:1 --cpus-per-task=2 --mem=4G --vm-image=base-ubuntu hostname
+# while running:
+ssh -i /tmp/vmocs/<jobid>/id_ed25519 -p <ssh_port> ubuntu@localhost lspci
+# expect: AMD GPU visible inside VM
+```
 
 ---
 

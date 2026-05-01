@@ -5,46 +5,154 @@
 ### Slurm GPU passthrough via VFIO or GIM/SR-IOV
 
 Enable `--gres=gpu:N` to transparently pass allocated GPUs into the VM via VFIO
-(exclusive full passthrough) or AMD GIM SR-IOV virtual functions (shared).
+(exclusive full passthrough) or AMD GIM SR-IOV virtual functions (shared, one VF
+per job).
 
 ---
 
 **How Slurm exposes the allocation:**
 
-`--gres=gpu:1` sets `SLURM_STEP_GPUS=0` (index of the allocated GPU). For VM
-passthrough we need the PCI BDF (`0000:41:00.0`), not a device file.
+`--gres=gpu:1` allocates one GPU device file from `gres.conf File=` to the job,
+adds it to the job's cgroup device whitelist, and sets `SLURM_STEP_GPUS` to the
+ordinal index within the File= list. The cgroup is the source of truth — only the
+allocated `/dev/vfio/<N>` is accessible inside the task. `SLURM_STEP_GPUS` is not
+used in the plugin; the cgroup filter is sufficient.
 
 ---
 
-**Chosen design: static driver + manual `gres.conf`**
+**How both cases reduce to the same device files**
 
-Driver binding is a node configuration decision, not a per-job decision. The
-admin binds GPUs to `vfio-pci` or enables GIM VFs once at node setup, then
-declares the resulting device files in `gres.conf`:
+**Case 1 — bare VFIO (full GPU exclusive passthrough):**
+- Admin binds each GPU's PF to `vfio-pci` at node setup
+- Kernel creates `/dev/vfio/<iommu_group>` per GPU
+- PF has no `physfn` symlink; driver symlink resolves to `vfio-pci`
 
+**Case 2 — AMD GIM SR-IOV (one VF per job, GPU shared across jobs):**
+- GIM driver (`gim` module) manages the PF (device id `75a3` on MI300-series)
+- GIM creates one VF per physical GPU (device id `75b3`), then binds each VF to
+  `vfio-pci`
+- Kernel creates `/dev/vfio/<iommu_group>` per VF — identical file layout to
+  bare VFIO
+- VF is identified in sysfs by the presence of a `physfn` symlink pointing to its PF
+
+In both cases the device file Slurm tracks is `/dev/vfio/<N>`. No DRI files
+(`/dev/dri/renderD*`) are involved — the GPU (or VF) is not bound to `amdgpu`.
+
+---
+
+**Example mapping on an 8-GPU GIM SR-IOV node:**
+
+```
+BDF (VF)        iommu group   device file
+0000:05:02.0    194           /dev/vfio/194
+0000:15:02.0    190           /dev/vfio/190
+0000:65:02.0    192           /dev/vfio/192
+0000:75:02.0    193           /dev/vfio/193
+0000:85:02.0    196           /dev/vfio/196
+0000:95:02.0    191           /dev/vfio/191
+0000:e5:02.0    195           /dev/vfio/195
+0000:f5:02.0    197           /dev/vfio/197
+```
+
+IOMMU group numbers are not in BDF order — always derive them from sysfs.
+
+---
+
+**Chosen design: static driver + auto-generated `gres.conf`**
+
+Driver binding is a node configuration decision, not a per-job decision. The admin
+runs the helper script once at node setup to generate the `gres.conf` File= line:
+
+```bash
+# Run on the node to generate the gres.conf File= line
+python3 -c "
+from pathlib import Path
+devs = []
+for bdf in Path('/sys/bus/pci/devices').iterdir():
+    # VF: has physfn symlink (bare VFIO PFs don't)
+    is_vf = (bdf / 'physfn').exists()
+    drv = bdf / 'driver'
+    if not drv.exists() or Path(drv).resolve().name != 'vfio-pci': continue
+    # For bare VFIO PFs: filter to display class (0x03xx), skip audio (0x04xx)
+    if not is_vf:
+        cls = (bdf / 'class').read_text().strip()
+        if not cls.startswith('0x03'): continue
+    grp = Path(bdf / 'iommu_group').resolve().name
+    dev = f'/dev/vfio/{grp}'
+    if Path(dev).exists(): devs.append(dev)
+print('Name=gpu File=' + ','.join(sorted(devs)))
+"
+```
+
+Example output for the GIM node above:
 ```ini
-# VFIO-bound GPU (full exclusive passthrough)
-Name=gpu File=/dev/vfio/0
-
-# GIM virtual functions (shared passthrough, one VF per job)
-Name=gpu File=/dev/dri/renderD192,/dev/dri/renderD193
+Name=gpu File=/dev/vfio/190,/dev/vfio/191,/dev/vfio/192,/dev/vfio/193,/dev/vfio/194,/dev/vfio/195,/dev/vfio/196,/dev/vfio/197
 ```
 
-Slurm allocates a device file to the job, sets `SLURM_STEP_GPUS`, and restricts
-the cgroup. The plugin reads the allocated device file, follows the sysfs symlink
-to get the BDF, and passes `--pci <BDF>` to `vmocs launch`. No runtime driver
-rebinding, no privileged hook, no restore-on-exit logic.
+Slurm allocates one device file to the job, restricts the cgroup, and the plugin
+does the rest. No runtime rebinding, no privileged hook, no restore-on-exit logic.
 
-**Plugin job is trivial:**
+---
+
+**Plugin flow:**
+
 ```
-SLURM_STEP_GPUS=0
-→ device file from gres.conf: /dev/vfio/0
-→ /sys/class/.../device → 0000:41:00.0
-→ vmocs launch base-ubuntu --pci 0000:41:00.0
+Slurm allocates /dev/vfio/194 → cgroup whitelists it
+plugin (task_init) scans /dev/vfio/* numeric entries
+tries to open each → /dev/vfio/194 succeeds, others → EPERM
+extract iommu group number: 194
+collect ALL BDFs in /sys/kernel/iommu_groups/194/devices/
+→ pass each as --pci to vmocs launch
+vmocs launch <template> --pci 0000:05:02.0 [--pci 0000:05:02.1 ...]
 ```
 
-**Tradeoff:** GPU role is static — a VFIO-configured GPU cannot simultaneously
-run host compute jobs. Acceptable for HPC nodes with fixed roles.
+**Consumer card edge case — multiple BDFs per IOMMU group:**
+
+Consumer GPUs (e.g., RX 7900 XTX) expose two PCI functions on the same slot:
+- `03:00.0` — VGA/display controller (`0x03xx` class)
+- `03:00.1` — HDMI/DP audio device (`0x04xx` class)
+
+Whether these land in the same IOMMU group or separate ones depends on whether
+ACS (Access Control Services) is enabled on the host:
+
+**ACS off (default on most systems) — same group:**
+```
+03:00.0  →  group 63  →  /dev/vfio/63
+03:00.1  →  group 63  →  /dev/vfio/63   ← same file
+```
+gres.conf is one entry: `Name=gpu File=/dev/vfio/63`
+
+Slurm allocates `/dev/vfio/63`. The plugin collects **all** BDFs in group 63 and
+passes them all to `--pci`. Both functions appear in the VM. This is required for
+Windows GUI VMs — omitting the audio function can cause the guest to hang on boot.
+
+**ACS on — separate groups:**
+```
+03:00.0  →  group 63  →  /dev/vfio/63
+03:00.1  →  group 64  →  /dev/vfio/64
+```
+Slurm has no way to allocate two device files as one atomic GPU unit. Options:
+- **Compute only:** list only `/dev/vfio/63` in gres.conf, plugin passes `03:00.0`
+  alone. Audio is not available in the VM but compute works fine.
+- **Full GUI (Windows):** list both files, allocate with `--gres=gpu:1,gpu:audio:1`
+  using a separate `Type=audio` gres entry. More admin overhead.
+
+For Instinct/GIM nodes this edge case does not apply — each VF is a single-function
+device in its own IOMMU group, so the group always contains exactly one BDF.
+
+**Plugin rule:** pass ALL BDFs in the accessible IOMMU group to `--pci`, without
+filtering by PCI class. The `0x03xx` class filter is only used in `gres-conf-gen.py`
+to identify which groups represent GPUs (not audio-only or other devices).
+
+---
+
+**What needs to be built (static design):**
+
+| Component | File | Action |
+|-----------|------|--------|
+| Accessible VFIO device → BDF | `lib/vmocs/slurm.py` | `gpu_pci_addresses()`: scan `/dev/vfio/*`, try-open each, follow iommu_group sysfs to BDF |
+| SPANK plugin | `plugins/slurm/spank_vmocs.c` | Call `gpu_pci_addresses()` equivalent in C, append `--pci <BDF>` per GPU to `vmocs launch` |
+| gres.conf helper | `plugins/slurm/gres-conf-gen.py` | Script admins run once at node setup to print the `File=` line |
 
 ---
 
@@ -61,19 +169,8 @@ exit. This requires a privileged `slurm_spank_task_init_privileged` hook:
 5. On exit: reverse — unbind vfio-pci, restore original driver
 
 More flexible but more complex: requires root in the plugin, careful cleanup on
-failure, and the GPU must be idle (no host processes using it) when the job starts.
-
----
-
-**What needs to be built (static design):**
-
-| Component | File | Action |
-|-----------|------|--------|
-| GPU index → device file → BDF | `lib/vmocs/slurm.py` | `gpu_pci_addresses()`: read `SLURM_STEP_GPUS`, resolve device file from gres assignment, follow sysfs symlink to BDF |
-| SPANK plugin | `plugins/slurm/spank_vmocs.c` | Read `SLURM_STEP_GPUS`, append `--pci <BDF>` per GPU to the `vmocs launch` command |
-
-For GIM: VF device files are pre-created by the GIM driver and listed in
-`gres.conf` — no extra vmocs code needed beyond reading `SLURM_STEP_GPUS`.
+failure, and the GPU must be idle when the job starts. Not needed for GIM nodes
+where VFs are always vfio-pci bound.
 
 ### QMP event watcher — reboot-survives, shutdown-ends-job
 

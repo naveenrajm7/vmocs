@@ -116,6 +116,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         raise HypervisorError('template has no image or image-dir')
 
     # 1. COW overlay
+    logging.info('Creating disk overlay...')
     overlay = os.path.join(runtime_dir, 'disk.qcow2')
     VMImage.create_cow_overlay(base_image, overlay)
 
@@ -184,6 +185,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
     )
 
     # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
+    logging.info('Starting QEMU...')
     qemu_pid = os.fork()
     if qemu_pid == 0:
         os.setpgid(0, 0)
@@ -194,6 +196,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         os.execvp(cmd[0], cmd)
 
     # 6. Connect QMP and start VM (pcocc:1676-1723)
+    logging.info('Waiting for QEMU monitor...')
     try:
         mon = wait_for_monitor(qmp_socket, timeout=30)
     except HypervisorError:
@@ -207,6 +210,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
             time.sleep(1)
     mon.cont()
     mon.close()  # Release QMP connection — QEMU serves one client at a time
+    logging.info('VM booting, waiting for SSH...')
 
     # Vagrant: SSH in with the well-known insecure key, replace it with our ephemeral key
     # Skipped when insert-key=false (pre-installed key is used as-is)

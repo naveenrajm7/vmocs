@@ -60,7 +60,7 @@ static struct spank_option vmocs_options[] = {
     {
         "vm-image",
         "TEMPLATE",
-        "Boot a VM with the specified vmocs template name",
+        "[vmocs] Boot a VM with the specified vmocs template name",
         1,                              /* has_arg */
         0,                              /* val (unused) */
         (spank_opt_cb_f) opt_vm_image
@@ -68,7 +68,7 @@ static struct spank_option vmocs_options[] = {
     {
         "vm-save",
         "PATH",
-        "Flatten VM disk into a new qcow2 image when the job ends",
+        "[vmocs] Flatten VM disk into a new qcow2 image when the job ends",
         1,                              /* has_arg */
         0,                              /* val (unused) */
         (spank_opt_cb_f) opt_vm_save

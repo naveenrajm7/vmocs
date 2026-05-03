@@ -17,6 +17,7 @@ class FakeTemplate:
     mount_points = {}
     extra_hostfwd = []
     pci_root_port = False
+    pci_roms = {}
     firmware = None
     firmware_vars_template = None
     display = 'none'

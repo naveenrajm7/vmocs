@@ -4,8 +4,9 @@
 
 ### Slurm GPU passthrough via VFIO or GIM/SR-IOV
 
-**Status: implemented, end-to-end test pending (node reboot required — GPU wedged
-after failed passthrough attempt; `lspci` shows `rev ff / Unknown header type 7f`).**
+**Status: end-to-end tested and working on `ctr-halo-b48-01` (GFX1151, Ubuntu 24.04,
+Slurm 24.11.5). GPU display controller and audio device both visible inside VM.
+Windows VM with Adrenalin driver installed and GPU recognised.**
 
 Enable `--gres=gpu:N` to transparently pass allocated GPUs into the VM via VFIO
 (exclusive full passthrough) or AMD GIM SR-IOV virtual functions (shared, one VF
@@ -18,42 +19,98 @@ per job).
 | VFIO device → BDF discovery | `plugins/slurm/spank_vmocs.c` `collect_pci_args()` | Done |
 | `--pci <BDF>` injection into launch | `plugins/slurm/spank_vmocs.c` `slurm_spank_task_init()` | Done |
 | gres.conf generation script | `plugins/slurm/gres-conf-gen.py` | Done |
-| Node file permissions | udev rule `99-vfio-kvm.rules` + user in `kvm` group | Done (node-level setup) |
+| Node file permissions | udev rule `SUBSYSTEM=="vfio", GROUP="kvm", MODE="0660"` + user in `kvm` group | Done |
+| vBIOS ROM support | `lib/vmocs/hypervisor.py` `pci-roms` template field | Done — required for APU/iGPU passthrough |
+| Cgroup enforcement verified | Slurm cgroup v2 tested — jobs without `--gres=gpu` cannot open allocated GPU group | Done |
+
+**Tested flow:**
+```bash
+srun --gres=gpu:gfx1151:1 --cpus-per-task=2 --mem=4G --vm-image=base-ubuntu hostname
+# inside VM:
+lspci -nn | grep AMD
+# 00:07.0 Display controller [0380]: AMD/ATI Device [1002:1586]  ← GPU passed through
+# 00:08.0 Audio device [0403]: AMD Rembrandt HDMI Audio [1002:1640]
+```
 
 **Node setup steps (one-time per node):**
 ```bash
 # 1. Bind GPUs to vfio-pci (driverctl persists across reboots)
-driverctl set-override 0000:03:00.0 vfio-pci
-driverctl set-override 0000:03:00.1 vfio-pci
+driverctl set-override 0000:c5:00.0 vfio-pci
 
-# 2. udev rule so kvm group members can open vfio devices
-echo 'SUBSYSTEM=="vfio", KERNEL!="vfio", GROUP="kvm", MODE="0660"' \
-    > /etc/udev/rules.d/99-vfio-kvm.rules
-udevadm control --reload && udevadm trigger --subsystem-match=vfio
+# 2. udev rule so kvm group members can open tracked vfio devices
+echo 'SUBSYSTEM=="vfio", GROUP="kvm", MODE="0660"' \
+    > /etc/udev/rules.d/99-vfio.rules
+udevadm control --reload-rules && udevadm trigger
 
-# 3. Add job users to kvm group
+# 3. Add job users to kvm group (requires slurmd restart to take effect)
 usermod -aG kvm <user>
 
 # 4. Generate gres.conf File= line
 python3 plugins/slurm/gres-conf-gen.py >> /etc/slurm/gres.conf
 
-# 5. Update slurm-nodes.conf: change gres=gpu:<type>:N → gres=gpu:N
-# 6. Restart slurmctld + slurmd
+# 5. Update slurm.conf node entry: add gres=gpu:<type>:N, keep other fields
+# 6. Restart slurmd (compute node) + scontrol update nodename=<node> state=resume
 ```
 
 **Template requirement:** templates used with GPU passthrough must set
 `pci-root-port: true` — without it QEMU crashes with IRQ assertion failure
 (`pci_irq_handler: 0 <= irq_num && irq_num < PCI_NUM_PINS`) on AMD GPUs.
 
-**Remaining: end-to-end passthrough test**
-
-Verify after node reboot:
-```bash
-srun --gres=gpu:1 --cpus-per-task=2 --mem=4G --vm-image=base-ubuntu hostname
-# while running:
-ssh -i /tmp/vmocs/<jobid>/id_ed25519 -p <ssh_port> ubuntu@localhost lspci
-# expect: AMD GPU visible inside VM
+**APU/iGPU requirement:** set `pci-roms` in the template mapping vendor:device →
+vBIOS file path. Discrete GPUs load vBIOS from their own ROM; APUs do not have one
+and QEMU must supply it:
+```yaml
+pci-roms:
+  1002:1586: /cluster/vmocs/roms/vbios_1002_1586.bin
 ```
+
+**Known issues / remaining work:**
+
+#### 1. Untracked VFIO groups leak into all jobs (multi-GPU conflict risk)
+
+The plugin scans all `/dev/vfio/*` entries it can open via the `kvm` group. On
+consumer GPUs where the display controller and audio device land in **separate**
+IOMMU groups, only the display group is tracked in `gres.conf`. The audio group
+(`/dev/vfio/<N+1>`) is accessible to all `kvm` group members regardless of Slurm
+allocation.
+
+**Impact on a single-GPU node:** harmless — the audio device leaks into every VM
+but there is only one audio group to conflict over.
+
+**Impact on a multi-GPU node:** Job 1 (allocated GPU 1) picks up GPU 1's audio AND
+GPU 2's audio (both openable via `kvm` group). Job 2 (allocated GPU 2) then fails
+to claim GPU 2's audio — it is already held by Job 1's QEMU. Result: Job 2's VM
+boots without audio, or QEMU fails to bind the device entirely.
+
+**Root cause:** Slurm cgroup v2 device enforcement only covers devices declared in
+`gres.conf`. Untracked groups are gated solely by file permissions (`kvm` group),
+not the cgroup whitelist.
+
+**Fix direction:** Replace `collect_pci_args()` scan with an explicit lookup driven
+by `SLURM_STEP_GPUS` ordinal. Requires either:
+- Parsing `gres.conf` in the plugin to map ordinal → device file, then follow sysfs
+  to enumerate all BDFs in that group only, OR
+- A new `vmocs_vfio_devices=` plugin arg in `plugstack.conf` listing device files
+  per GPU ordinal (not scalable for large clusters)
+
+#### 2. Vendor reset not available for GFX1151 / Navi 4
+
+After a VM with GPU passthrough exits, AMD GPUs require a vendor-specific reset
+sequence before the next VM can use them. The generic PCIe `pm`/`bus` reset leaves
+the GPU in a corrupted state.
+
+`/sys/bus/pci/devices/0000:c5:00.0/reset_method` shows `pm bus` — no proper reset.
+
+The `vendor-reset` kernel module (https://github.com/gnif/vendor-reset) supports up
+to Navi 3x (RDNA3). GFX1151 (Strix Halo APU, RDNA3.5) and Navi 4x (RDNA4) are not
+yet supported. Writing a patch requires extracting the reset sequence from:
+- `drivers/gpu/drm/amd/amdgpu/gfx_v11_0.c`
+- `drivers/gpu/drm/amd/amdgpu/soc21.c`
+- `drivers/gpu/drm/amd/amdgpu/mp_v13_0.c`
+
+APU reset is more complex than discrete GPU reset — the GPU shares the die with the
+CPU and has no PCIe link to reset. Until a patch exists, a node reboot is required
+between passthrough sessions on affected hardware.
 
 ---
 
@@ -197,9 +254,11 @@ to identify which groups represent GPUs (not audio-only or other devices).
 
 | Component | File | Action |
 |-----------|------|--------|
-| Accessible VFIO device → BDF | `lib/vmocs/slurm.py` | `gpu_pci_addresses()`: scan `/dev/vfio/*`, try-open each, follow iommu_group sysfs to BDF |
-| SPANK plugin | `plugins/slurm/spank_vmocs.c` | Call `gpu_pci_addresses()` equivalent in C, append `--pci <BDF>` per GPU to `vmocs launch` |
-| gres.conf helper | `plugins/slurm/gres-conf-gen.py` | Script admins run once at node setup to print the `File=` line |
+| ~~Accessible VFIO device → BDF~~ | `plugins/slurm/spank_vmocs.c` `collect_pci_args()` | Done |
+| ~~SPANK plugin~~ | `plugins/slurm/spank_vmocs.c` | Done |
+| ~~gres.conf helper~~ | `plugins/slurm/gres-conf-gen.py` | Done |
+| Fix untracked group leak | `plugins/slurm/spank_vmocs.c` | Replace scan with `SLURM_STEP_GPUS`-driven lookup (see Known Issues §1) |
+| Vendor reset for GFX1151/Navi4 | kernel module | Write vendor-reset patch (see Known Issues §2) |
 
 ---
 
@@ -275,6 +334,24 @@ approach: write a `save_path` field into `vm.json` at launch time; in the finall
 
 **Validation:** Launch a VM from the saved qcow2 as a template image — it must boot successfully
 and SSH must become reachable within the normal timeout.
+
+**Additional observed failure — `--vm-save` via Slurm `slurm_spank_exit`:**
+
+When `--vm-save=<path>` is passed via `srun`, the saved image is abnormally small
+(e.g. a few hundred MB for a Windows VM that should be tens of GB), indicating the
+`qemu-img convert` either ran against an incomplete overlay or was cut short.
+
+Likely cause: Slurm imposes a job step timeout and kills the `slurm_spank_exit`
+process mid-conversion before `qemu-img convert` finishes writing the full image.
+`qemu-img convert` for a large Windows overlay can take several minutes; if Slurm's
+`KillWait` or step epilog timeout fires first, the output file is left truncated.
+
+**Fix direction:** The conversion must happen before Slurm's cleanup window closes.
+Options:
+- Move the save step into `vmocs launch` (before `slurm_spank_exit` fires) — this
+  keeps the full conversion inside the job's runtime, not the epilog.
+- Or increase Slurm's `EpilogMsgTime` / `KillWait` to give `slurm_spank_exit`
+  enough time to finish the conversion (admin config change, not a code fix).
 
 ---
 

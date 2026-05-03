@@ -41,6 +41,7 @@ TEMPLATE_SETTINGS = {
     'ssh-key':                (False, None,    True),   # private key path when insert-key=false
     'pci-root-port':          (False, False,   True),   # True = each PCI passthrough device gets its own pcie-root-port (required for AMD GPUs)
     'extra-hostfwd':          (False, [],      True),   # extra QEMU hostfwd entries, e.g. ['tcp::3389-:3389']
+    'pci-roms':               (False, {},      True),   # vendor:device → romfile path, applied only to display-class (0x03xx) devices
     'inherits':               (False, None,    False),
     'description':   (False, '',         False),
 }

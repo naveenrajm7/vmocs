@@ -203,6 +203,26 @@ def _make_cloud_init_iso(runtime_dir, ssh_pubkey, hostname='vmocs', ssh_user='ro
 
 
 # ---------------------------------------------------------------------------
+# PCI sysfs helpers
+# ---------------------------------------------------------------------------
+
+def _pci_sysfs_hex(bdf, attr):
+    """Read a hex sysfs attribute for a PCI device, return int or None."""
+    try:
+        with open(f'/sys/bus/pci/devices/{bdf}/{attr}') as f:
+            return int(f.read().strip(), 16)
+    except (IOError, ValueError):
+        return None
+
+def _pci_vendor_device(bdf):
+    """Return 'vendor:device' string (e.g. '1002:1586') for a BDF, or None."""
+    vendor = _pci_sysfs_hex(bdf, 'vendor')
+    device = _pci_sysfs_hex(bdf, 'device')
+    if vendor is None or device is None:
+        return None
+    return f'{vendor:04x}:{device:04x}'
+
+# ---------------------------------------------------------------------------
 # Mount points — adapted from pcocc Hypervisor.py:1897-1948
 # ---------------------------------------------------------------------------
 
@@ -445,16 +465,22 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # does for IB and generic PCI devices.
     # Chassis/slot numbering starts at 6/0x15 to avoid Q35's internal ports.
     use_root_port = template.pci_root_port
+    pci_roms = template.pci_roms or {}
     for i, bdf in enumerate(pci_devices):
+        romfile = ''
+        if pci_roms:
+            vid_did = _pci_vendor_device(bdf)
+            if vid_did and vid_did in pci_roms:
+                romfile = f',romfile={pci_roms[vid_did]}'
         if use_root_port:
             chassis = 6 + i
             slot = 0x15 + i
             port_id = f'pcie.{chassis}'
             cmd += ['-device',
                     f'pcie-root-port,id={port_id},bus=pcie.0,chassis={chassis},slot={slot:#x}']
-            cmd += ['-device', f'vfio-pci,host={bdf},bus={port_id}']
+            cmd += ['-device', f'vfio-pci,host={bdf},bus={port_id}{romfile}']
         else:
-            cmd += ['-device', f'vfio-pci,host={bdf}']
+            cmd += ['-device', f'vfio-pci,host={bdf}{romfile}']
 
     # Custom args from template
     if template.custom_args:

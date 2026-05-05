@@ -182,6 +182,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         snapshot_mem=snapshot_mem,
         firmware_vars=firmware_vars,
         pci_devices=pci_devices,
+        extra_disks=template.extra_disks or [],
     )
 
     # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)

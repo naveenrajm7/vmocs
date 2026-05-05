@@ -201,6 +201,66 @@ scancel <JOBID>
 
 ---
 
+## 8. Extra persistent disk
+
+Verifies that an additional persistent disk is visible and writable inside the guest.
+
+**Setup:** Create a blank disk image and a template that references it:
+
+```bash
+qemu-img create -f qcow2 /tmp/extra-disk-test.qcow2 1G
+```
+
+Template entry (add to `templates.yaml`):
+```yaml
+test-extra-disk:
+  inherits: base-ubuntu
+  extra-disks:
+    - file: /tmp/extra-disk-test.qcow2
+      device: virtio       # use 'nvme' if your QEMU build supports it
+      cache: none
+```
+
+**Launch:**
+```bash
+.venv/bin/vmocs launch test-extra-disk --cores 2 --memory 2048 --detach
+```
+
+**Verify disk is visible:**
+```bash
+ssh -i /tmp/vmocs/<N>/id_ed25519 -o StrictHostKeyChecking=no \
+    -p <PORT> ubuntu@127.0.0.1 'lsblk'
+```
+
+Expected: `vdb` (or `nvme0n1` for NVMe) appears as a 1G disk alongside `vda`.
+
+**Verify disk is writable:**
+```bash
+ssh -i /tmp/vmocs/<N>/id_ed25519 -o StrictHostKeyChecking=no \
+    -p <PORT> ubuntu@127.0.0.1 \
+    'sudo mkfs.ext4 /dev/vdb && sudo mkdir -p /mnt/extra && sudo mount /dev/vdb /mnt/extra && echo "hello" | sudo tee /mnt/extra/test.txt && cat /mnt/extra/test.txt'
+```
+
+Expected: `hello` printed — disk formats, mounts, and reads/writes successfully.
+
+**Verify persistence:** Stop the VM, relaunch from the same template, and confirm
+the data written above survives (no COW overlay — writes go directly to the file):
+
+```bash
+.venv/bin/vmocs stop <N>
+.venv/bin/vmocs launch test-extra-disk --cores 2 --memory 2048 --detach
+ssh ... ubuntu@127.0.0.1 'sudo mount /dev/vdb /mnt/extra && cat /mnt/extra/test.txt'
+```
+
+Expected: `hello` — the file persisted across VM restarts.
+
+Stop:
+```bash
+.venv/bin/vmocs stop <N>
+```
+
+---
+
 ## Runtime layout (for reference)
 
 ```

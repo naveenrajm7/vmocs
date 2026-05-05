@@ -10,6 +10,13 @@ base-ubuntu:
   ssh-user: ubuntu
   ssh-timeout: 180
 
+test-extra-disk:
+  inherits: base-ubuntu
+  extra-disks:
+    - file: /tmp/extra-disk-test.qcow2
+      device: nvme
+      cache: none
+
 saved-ubuntu:
   inherits: base-ubuntu
   image: /tmp/ubuntu-saved.qcow2

@@ -334,7 +334,8 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        cloud_init_iso=None,
                        snapshot_mem=None,
                        firmware_vars=None,
-                       pci_devices=()):
+                       pci_devices=(),
+                       extra_disks=()):
     """Build the full QEMU command line list.
 
     Args:
@@ -407,6 +408,18 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     model = template.disk_model
     cache = template.disk_cache
     cmd += block_cmdline(model, disk_path, 'drive0', 0, cache)
+
+    # Extra disks (persistent, no COW overlay — user owns these files)
+    for i, disk in enumerate(extra_disks):
+        idx = i + 1
+        name = f'drive{idx}'
+        cmd += block_cmdline(
+            disk.get('device', model),
+            disk['file'],
+            name, idx,
+            disk.get('cache', cache),
+            serial=disk.get('serial'),
+        )
 
     # Cloud-init ISO injected as SCSI cdrom (cloud-init boot mode only)
     if cloud_init_iso:

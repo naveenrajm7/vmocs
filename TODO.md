@@ -355,6 +355,16 @@ Options:
 
 ---
 
+### ~~Extra persistent disks (Approach A)~~ — Done
+
+Implemented 2026-05-04. Users can attach additional persistent disks via the
+`extra-disks` template setting. Each disk specifies `file` (required), plus
+optional `device`, `cache`, and `serial`. Disks are attached directly (no COW
+overlay) and untouched on teardown. See `development/vmocs-extra-disks.md` for
+design and test results.
+
+---
+
 ### Improve VM boot time
 
 Current baseline on this machine (HEAD, `5c9dcc8`):

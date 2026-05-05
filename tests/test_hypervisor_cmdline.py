@@ -16,6 +16,7 @@ class FakeTemplate:
     custom_args = []
     mount_points = {}
     extra_hostfwd = []
+    extra_disks = []
     pci_root_port = False
     pci_roms = {}
     firmware = None
@@ -305,3 +306,72 @@ def test_firmware_vars_required_when_firmware_set(tmp_path, cow_img):
             qmp_socket=os.path.join(runtime, 'qmp.sock'),
             firmware_vars=None,   # intentionally missing
         )
+
+
+# ---------------------------------------------------------------------------
+# Extra disks tests
+# ---------------------------------------------------------------------------
+
+def _build_with_extra_disks(tmp_path, cow_img, extra_disks):
+    runtime = str(tmp_path / 'rt-extra')
+    os.makedirs(runtime, exist_ok=True)
+    return build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2, memory_mb=1024,
+        disk_path=cow_img, runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        extra_disks=extra_disks,
+    )
+
+
+def test_extra_disk_nvme(tmp_path, cow_img):
+    extra = [{'file': '/data/scratch.qcow2', 'device': 'nvme'}]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'node-name=drive1' in flat
+    assert 'nvme,drive=drive1' in flat
+
+
+def test_extra_disk_virtio(tmp_path, cow_img):
+    extra = [{'file': '/data/scratch.qcow2', 'device': 'virtio'}]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'node-name=drive1' in flat
+    assert 'virtio-blk-pci' in flat
+    assert 'drive=drive1' in flat
+
+
+def test_extra_disk_multiple(tmp_path, cow_img):
+    extra = [
+        {'file': '/data/d1.qcow2', 'device': 'nvme'},
+        {'file': '/data/d2.qcow2', 'device': 'virtio'},
+    ]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'node-name=drive1' in flat
+    assert 'node-name=drive2' in flat
+
+
+def test_extra_disk_cache_override(tmp_path, cow_img):
+    extra = [{'file': '/data/scratch.qcow2', 'device': 'nvme', 'cache': 'none'}]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'cache.direct=on' in flat
+
+
+def test_extra_disk_serial(tmp_path, cow_img):
+    extra = [{'file': '/data/scratch.qcow2', 'device': 'nvme', 'serial': 'MY-SN'}]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'serial=MY-SN' in flat
+
+
+def test_extra_disk_defaults_to_template_model(tmp_path, cow_img):
+    """Extra disk with no 'device' inherits the template's disk-model (virtio)."""
+    extra = [{'file': '/data/scratch.qcow2'}]
+    cmd = _build_with_extra_disks(tmp_path, cow_img, extra)
+    flat = ' '.join(cmd)
+    assert 'virtio-blk-pci' in flat
+    assert 'node-name=drive1' in flat

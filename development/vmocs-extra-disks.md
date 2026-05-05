@@ -208,6 +208,61 @@ Approach B can be added later by introducing the `snapshot: true` flag on indivi
 
 ---
 
+## Implementation Status
+
+**Approach A is implemented and tested** (2026-05-04, branch `extra-disk-support`).
+
+### Changes made
+
+| File | Change |
+|------|--------|
+| `lib/vmocs/templates.py` | Added `extra-disks` to `TEMPLATE_SETTINGS` (list of dicts, default `[]`, inheritable) |
+| `lib/vmocs/hypervisor.py` | Added `extra_disks` parameter to `build_qemu_cmdline()`; loops over extra disks after `drive0`, calling `block_cmdline()` with `drive1`, `drive2`, etc. |
+| `lib/vmocs/launch.py` | Passes `template.extra_disks` through to `build_qemu_cmdline()`. No COW overlays or save/teardown logic for extra disks. |
+| `tests/test_hypervisor_cmdline.py` | 6 new tests: NVMe, virtio, multiple disks, cache override, serial, default model inheritance |
+
+### Template schema
+
+Each extra disk entry is a dict with `file` (required), plus optional `device`, `cache`, `serial`:
+
+```yaml
+extra-disks:
+  - file: /path/to/disk.qcow2    # required
+    device: nvme                  # optional, defaults to template's disk-model
+    cache: none                   # optional, defaults to template's disk-cache
+    serial: MY-SERIAL             # optional, only meaningful for nvme
+```
+
+### End-to-end test results
+
+Tested on RHEL 9 with `/usr/libexec/qemu-kvm` (which lacks NVMe device support). Used `device: virtio` instead.
+
+```
+$ vmocs launch test-extra-disk --cores 2 --memory 2048 --detach
+VM ready  job_id=43842  ssh -i /tmp/vmocs/43842/id_ed25519 -p 60222 ubuntu@127.0.0.1
+
+$ ssh ... ubuntu@127.0.0.1 'lsblk'
+vda     253:0    0  3.5G  0 disk       ← primary OS disk (COW overlay)
+├─vda1  253:1    0  2.5G  0 part /
+├─vda14 253:14   0    4M  0 part
+├─vda15 253:15   0  106M  0 part /boot/efi
+└─vda16 259:0    0  913M  0 part /boot
+vdb     253:16   0    1G  0 disk       ← extra persistent disk
+
+$ ssh ... ubuntu@127.0.0.1 'sudo mkfs.ext4 /dev/vdb && sudo mount /dev/vdb /mnt/extra && echo "hello" | sudo tee /mnt/extra/test.txt'
+hello
+```
+
+### Note: NVMe device availability
+
+The `nvme` device model requires full upstream QEMU (`qemu-system-x86_64`). RHEL/CentOS `qemu-kvm` ships a stripped-down build that excludes NVMe. Check availability:
+
+```bash
+/path/to/qemu -device help 2>&1 | grep -i nvme
+```
+
+---
+
 ## pcocc Reference
 
 - Template setting: `Templates.py:52` (`persistent-drives`)

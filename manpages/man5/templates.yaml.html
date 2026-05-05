@@ -185,7 +185,7 @@ Windows, BSD, or any image following the Vagrant convention.</p>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">ssh-user</span></span></dt>
-<dd><p>Username for the initial SSH connection.</p>
+<dd><p>Username for the initial SSH connection.  Default: <code class="docutils literal notranslate"><span class="pre">root</span></code>.</p>
 <p>Typical values: <code class="docutils literal notranslate"><span class="pre">ubuntu</span></code> (cloud-init images), <code class="docutils literal notranslate"><span class="pre">vagrant</span></code> (Vagrant boxes).</p>
 </dd></dl>
 
@@ -206,8 +206,8 @@ different templates require different QEMU versions.</p>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">machine-type</span></span></dt>
-<dd><p>QEMU machine type passed to <code class="docutils literal notranslate"><span class="pre">-machine</span></code>.  Examples: <code class="docutils literal notranslate"><span class="pre">q35</span></code>,
-<code class="docutils literal notranslate"><span class="pre">pc-q35-8.2</span></code>.</p>
+<dd><p>QEMU machine type passed to <code class="docutils literal notranslate"><span class="pre">-machine</span></code>.  Default: <code class="docutils literal notranslate"><span class="pre">q35</span></code>.
+Examples: <code class="docutils literal notranslate"><span class="pre">q35</span></code>, <code class="docutils literal notranslate"><span class="pre">pc-q35-8.2</span></code>.</p>
 </dd></dl>
 
 <dl class="describe">
@@ -250,8 +250,8 @@ performing a full boot (~3–5 s vs. full boot time).</p>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">display</span></span></dt>
-<dd><p>Guest display backend.  <code class="docutils literal notranslate"><span class="pre">vnc</span></code> enables a VNC server; omit for no display
-(headless).</p>
+<dd><p>Guest display backend.  Default: <code class="docutils literal notranslate"><span class="pre">none</span></code> (headless).  Set to <code class="docutils literal notranslate"><span class="pre">vnc</span></code> to
+enable a VNC server.</p>
 </dd></dl>
 
 <dl class="describe">
@@ -291,8 +291,9 @@ Windows 11.</p>
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">insert-key</span></span></dt>
-<dd><p>Boolean.  Whether to inject the SSH key via cloud-init or Vagrant mechanism.
-Set to <code class="docutils literal notranslate"><span class="pre">false</span></code> when using a pre-provisioned static SSH key.</p>
+<dd><p>Boolean.  Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.  Whether to inject the SSH key via cloud-init
+or Vagrant mechanism.  Set to <code class="docutils literal notranslate"><span class="pre">false</span></code> when using a pre-provisioned static
+SSH key.</p>
 </dd></dl>
 
 <dl class="describe">
@@ -319,6 +320,22 @@ device.  Each entry uses the QEMU syntax
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">extra</span><span class="o">-</span><span class="n">hostfwd</span><span class="p">:</span>
   <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">3389</span><span class="o">-</span><span class="p">:</span><span class="mi">3389</span>
   <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">5985</span><span class="o">-</span><span class="p">:</span><span class="mi">5985</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">pci-roms</span></span></dt>
+<dd><p>Mapping of <code class="docutils literal notranslate"><span class="pre">vendor:device</span></code> PCI ID pairs to ROM file paths.  When a PCI
+passthrough device matches a key in this mapping, vmocs passes
+<code class="docutils literal notranslate"><span class="pre">romfile=&lt;path&gt;</span></code> to the <code class="docutils literal notranslate"><span class="pre">vfio-pci</span></code> device.  Only applied to
+display-class (<code class="docutils literal notranslate"><span class="pre">0x03xx</span></code>) devices.  Default: <code class="docutils literal notranslate"><span class="pre">{}</span></code>.</p>
+<p>Required for APU/iGPU passthrough where the GPU has no on-board vBIOS ROM
+and QEMU must supply one externally.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pci</span><span class="o">-</span><span class="n">roms</span><span class="p">:</span>
+  <span class="mi">1002</span><span class="p">:</span><span class="mi">1586</span><span class="p">:</span> <span class="o">/</span><span class="n">cluster</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">roms</span><span class="o">/</span><span class="n">vbios_1002_1586</span><span class="o">.</span><span class="n">bin</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -386,6 +403,50 @@ shared memory backing and does not support read-only mounts.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">extra-disks</span></span></dt>
+<dd><p>List of additional persistent disks to attach to the VM.  Each entry is a
+mapping with the following keys:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">file</span></code> <em>(required)</em></dt><dd><p>Absolute path to an existing <code class="docutils literal notranslate"><span class="pre">qcow2</span></code> or <code class="docutils literal notranslate"><span class="pre">raw</span></code> disk image.  The file
+must exist before launch.  vmocs attaches it directly — no COW overlay is
+created, so writes are persistent and the user owns the file's lifecycle.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">device</span></code> <em>(optional)</em></dt><dd><p>QEMU disk controller model for this disk: <code class="docutils literal notranslate"><span class="pre">virtio</span></code>, <code class="docutils literal notranslate"><span class="pre">virtio-scsi</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ide</span></code>, or <code class="docutils literal notranslate"><span class="pre">nvme</span></code>.  Defaults to the template's <code class="docutils literal notranslate"><span class="pre">disk-model</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">nvme</span></code> device requires full upstream QEMU
+(<code class="docutils literal notranslate"><span class="pre">qemu-system-x86_64</span></code>).  RHEL/CentOS <code class="docutils literal notranslate"><span class="pre">qemu-kvm</span></code> may not include
+it.  Check with <code class="docutils literal notranslate"><span class="pre">qemu</span> <span class="pre">-device</span> <span class="pre">help</span> <span class="pre">|</span> <span class="pre">grep</span> <span class="pre">nvme</span></code>.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cache</span></code> <em>(optional)</em></dt><dd><p>Cache mode for this disk.  Same values as <code class="docutils literal notranslate"><span class="pre">disk-cache</span></code>.  Defaults to
+the template's <code class="docutils literal notranslate"><span class="pre">disk-cache</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">serial</span></code> <em>(optional)</em></dt><dd><p>Serial number string for the disk device.  Only meaningful for <code class="docutils literal notranslate"><span class="pre">nvme</span></code>
+devices.  Defaults to <code class="docutils literal notranslate"><span class="pre">VMOCS-NVME-&lt;index&gt;</span></code>.</p>
+</dd>
+</dl>
+<p>Extra disks appear as sequential block devices inside the guest (<code class="docutils literal notranslate"><span class="pre">vdb</span></code>,
+<code class="docutils literal notranslate"><span class="pre">vdc</span></code>, … for virtio; <code class="docutils literal notranslate"><span class="pre">/dev/nvme0n1</span></code>, <code class="docutils literal notranslate"><span class="pre">/dev/nvme1n1</span></code> for NVMe).  On
+teardown, extra disk files are left untouched.</p>
+<p>Extra disks are <strong>not included in snapshots or VM saves</strong> — only the
+primary OS disk (<code class="docutils literal notranslate"><span class="pre">drive0</span></code>) is managed by vmocs.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">extra</span><span class="o">-</span><span class="n">disks</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">file</span><span class="p">:</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">scratch</span><span class="o">.</span><span class="n">qcow2</span>
+    <span class="n">device</span><span class="p">:</span> <span class="n">nvme</span>
+    <span class="n">cache</span><span class="p">:</span> <span class="n">none</span>
+    <span class="n">serial</span><span class="p">:</span> <span class="n">SCRATCH</span><span class="o">-</span><span class="mi">0</span>
+  <span class="o">-</span> <span class="n">file</span><span class="p">:</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span><span class="o">/</span><span class="n">data</span><span class="o">.</span><span class="n">qcow2</span>
+    <span class="n">device</span><span class="p">:</span> <span class="n">virtio</span>
+    <span class="n">cache</span><span class="p">:</span> <span class="n">writeback</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">custom-args</span></span></dt>
 <dd><p>List of raw QEMU arguments appended verbatim to the QEMU command line.
 Use for options that have no dedicated template field.</p>
@@ -408,6 +469,16 @@ Use for options that have no dedicated template field.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">snap</span><span class="o">-</span><span class="n">ubuntu</span><span class="p">:</span>
   <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
   <span class="n">snapshot</span><span class="p">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">snap</span>
+</pre></div>
+</div>
+<p>Extra persistent disk:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">rocm</span><span class="o">-</span><span class="n">nvme</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+  <span class="n">extra</span><span class="o">-</span><span class="n">disks</span><span class="p">:</span>
+    <span class="o">-</span> <span class="n">file</span><span class="p">:</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">scratch</span><span class="o">.</span><span class="n">qcow2</span>
+      <span class="n">device</span><span class="p">:</span> <span class="n">nvme</span>
+      <span class="n">cache</span><span class="p">:</span> <span class="n">none</span>
+      <span class="n">serial</span><span class="p">:</span> <span class="n">SCRATCH</span><span class="o">-</span><span class="mi">0</span>
 </pre></div>
 </div>
 <p>UEFI Windows guest with TPM:</p>

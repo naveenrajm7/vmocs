@@ -90,7 +90,7 @@ Fields
 
 .. describe:: ssh-user
 
-   Username for the initial SSH connection.
+   Username for the initial SSH connection.  Default: ``root``.
 
    Typical values: ``ubuntu`` (cloud-init images), ``vagrant`` (Vagrant boxes).
 
@@ -106,8 +106,8 @@ Fields
 
 .. describe:: machine-type
 
-   QEMU machine type passed to ``-machine``.  Examples: ``q35``,
-   ``pc-q35-8.2``.
+   QEMU machine type passed to ``-machine``.  Default: ``q35``.
+   Examples: ``q35``, ``pc-q35-8.2``.
 
 .. describe:: disk-model
 
@@ -138,8 +138,8 @@ Fields
 
 .. describe:: display
 
-   Guest display backend.  ``vnc`` enables a VNC server; omit for no display
-   (headless).
+   Guest display backend.  Default: ``none`` (headless).  Set to ``vnc`` to
+   enable a VNC server.
 
 .. describe:: vnc-port
 
@@ -167,8 +167,9 @@ Fields
 
 .. describe:: insert-key
 
-   Boolean.  Whether to inject the SSH key via cloud-init or Vagrant mechanism.
-   Set to ``false`` when using a pre-provisioned static SSH key.
+   Boolean.  Default: ``true``.  Whether to inject the SSH key via cloud-init
+   or Vagrant mechanism.  Set to ``false`` when using a pre-provisioned static
+   SSH key.
 
 .. describe:: ssh-key
 
@@ -191,6 +192,21 @@ Fields
       extra-hostfwd:
         - tcp::3389-:3389
         - tcp::5985-:5985
+
+.. describe:: pci-roms
+
+   Mapping of ``vendor:device`` PCI ID pairs to ROM file paths.  When a PCI
+   passthrough device matches a key in this mapping, vmocs passes
+   ``romfile=<path>`` to the ``vfio-pci`` device.  Only applied to
+   display-class (``0x03xx``) devices.  Default: ``{}``.
+
+   Required for APU/iGPU passthrough where the GPU has no on-board vBIOS ROM
+   and QEMU must supply one externally.
+
+   Example::
+
+      pci-roms:
+        1002:1586: /cluster/vmocs/roms/vbios_1002_1586.bin
 
 .. describe:: gpu
 
@@ -244,6 +260,52 @@ Fields
       mount-points:
         home: /home/user
 
+.. describe:: extra-disks
+
+   List of additional persistent disks to attach to the VM.  Each entry is a
+   mapping with the following keys:
+
+   ``file`` *(required)*
+     Absolute path to an existing ``qcow2`` or ``raw`` disk image.  The file
+     must exist before launch.  vmocs attaches it directly — no COW overlay is
+     created, so writes are persistent and the user owns the file's lifecycle.
+
+   ``device`` *(optional)*
+     QEMU disk controller model for this disk: ``virtio``, ``virtio-scsi``,
+     ``ide``, or ``nvme``.  Defaults to the template's ``disk-model``.
+
+     .. note::
+
+        The ``nvme`` device requires full upstream QEMU
+        (``qemu-system-x86_64``).  RHEL/CentOS ``qemu-kvm`` may not include
+        it.  Check with ``qemu -device help | grep nvme``.
+
+   ``cache`` *(optional)*
+     Cache mode for this disk.  Same values as ``disk-cache``.  Defaults to
+     the template's ``disk-cache``.
+
+   ``serial`` *(optional)*
+     Serial number string for the disk device.  Only meaningful for ``nvme``
+     devices.  Defaults to ``VMOCS-NVME-<index>``.
+
+   Extra disks appear as sequential block devices inside the guest (``vdb``,
+   ``vdc``, … for virtio; ``/dev/nvme0n1``, ``/dev/nvme1n1`` for NVMe).  On
+   teardown, extra disk files are left untouched.
+
+   Extra disks are **not included in snapshots or VM saves** — only the
+   primary OS disk (``drive0``) is managed by vmocs.
+
+   Example::
+
+      extra-disks:
+        - file: /shared/data/scratch.qcow2
+          device: nvme
+          cache: none
+          serial: SCRATCH-0
+        - file: /home/user/data.qcow2
+          device: virtio
+          cache: writeback
+
 .. describe:: custom-args
 
    List of raw QEMU arguments appended verbatim to the QEMU command line.
@@ -267,6 +329,16 @@ Inheritance and fast restore::
    snap-ubuntu:
      inherits: base-ubuntu
      snapshot: /tmp/ubuntu-snap
+
+Extra persistent disk::
+
+   rocm-nvme:
+     inherits: base-ubuntu
+     extra-disks:
+       - file: /shared/data/scratch.qcow2
+         device: nvme
+         cache: none
+         serial: SCRATCH-0
 
 UEFI Windows guest with TPM::
 

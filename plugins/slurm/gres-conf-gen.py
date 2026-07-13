@@ -83,11 +83,28 @@ def bdf_mapping():
     return rows
 
 
+def write_vfio_map(path, devs):
+    """
+    Write vfio-gpu.map: line N is the device file(s) for gres.conf index N.
+
+    One path per line for File= entries; comma-separated paths per line when
+    a GPU spans multiple IOMMU groups (MultipleFiles).
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        f.write("# vmocs VFIO GPU map — line N = SLURM_STEP_GPUS / File= index N\n")
+        for dev in devs:
+            f.write(f"{dev}\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true",
                         help="Print BDF→group mapping instead of gres.conf line")
+    parser.add_argument("--map", metavar="PATH",
+                        help="Also write vfio-gpu.map for the SPANK plugin")
     args = parser.parse_args()
 
     if args.check:
@@ -105,6 +122,10 @@ def main():
     if not devs:
         print("# No vfio-pci GPU devices found on this node.", file=sys.stderr)
         sys.exit(1)
+
+    if args.map:
+        write_vfio_map(args.map, devs)
+        print(f"# Wrote vfio map to {args.map}", file=sys.stderr)
 
     print(f"Name=gpu File={','.join(devs)}")
 

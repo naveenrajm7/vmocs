@@ -12,6 +12,7 @@
  *
  * Plugin args (in plugstack.conf):
  *   vmocs_path=/usr/local     — prefix that contains bin/vmocs (default: PATH)
+ *   vfio_map=/etc/vmocs/vfio-gpu.map — SLURM GPU ordinal → /dev/vfio/<N> map
  *
  * Compile:
  *   make -C plugins/slurm
@@ -26,7 +27,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <dirent.h>
-#include <fcntl.h>
 
 #include <stdint.h>
 #include <slurm/spank.h>
@@ -160,65 +160,178 @@ static long get_memory_mb(spank_t sp)
     return 0;   /* no memory constraint found; vmocs will use its default */
 }
 
-/*
- * Scan /dev/vfio/ for numeric group entries accessible in this job's cgroup.
- * For each accessible group, enumerate every BDF under
- * /sys/kernel/iommu_groups/<N>/devices/ and append "--pci <BDF>" to buf.
- *
- * The cgroup device whitelist is the source of truth: open() succeeds only
- * for groups Slurm allocated to this job; all others return EPERM.
- * Passing all BDFs in the group (not just the display-class function) is
- * required for consumer GPUs where GPU and audio share one IOMMU group.
- */
-static void collect_pci_args(char *buf, size_t buflen)
+#define VFIO_MAP_DEFAULT "/etc/vmocs/vfio-gpu.map"
+#define MAX_GPU_ORDINALS 32
+
+/* Return vfio-gpu.map path from vfio_map= plugin arg, or the default. */
+static const char *vfio_map_path(int ac, char **av)
 {
-    DIR           *vfio_dir;
-    struct dirent *ent;
+    static char buf[512];
+    int i;
+
+    for (i = 0; i < ac; i++) {
+        if (strncmp(av[i], "vfio_map=", 9) == 0)
+            return av[i] + 9;
+    }
+    return VFIO_MAP_DEFAULT;
+}
+
+/* Append "--pci <BDF>" for every device in IOMMU group <grp>. */
+static void append_bdfs_for_group(char *buf, size_t buflen, const char *grp)
+{
+    char           grp_path[384];
+    DIR           *grp_dir;
+    struct dirent *dev_ent;
+
+    snprintf(grp_path, sizeof(grp_path),
+             "/sys/kernel/iommu_groups/%s/devices", grp);
+    grp_dir = opendir(grp_path);
+    if (!grp_dir)
+        return;
+
+    while ((dev_ent = readdir(grp_dir)) != NULL) {
+        size_t used;
+        if (dev_ent->d_name[0] == '.')
+            continue;
+        used = strlen(buf);
+        if (used >= buflen - 1)
+            break;
+        snprintf(buf + used, buflen - used, " --pci %s", dev_ent->d_name);
+    }
+    closedir(grp_dir);
+}
+
+/*
+ * Extract the IOMMU group id from /dev/vfio/<N> and append all BDFs in
+ * that group to buf.
+ */
+static void append_bdfs_for_devfile(char *buf, size_t buflen, const char *devpath)
+{
+    const char *base;
+    char       *endp;
+
+    base = strrchr(devpath, '/');
+    base = base ? base + 1 : devpath;
+    strtol(base, &endp, 10);
+    if (*endp != '\0' || endp == base)
+        return;
+
+    append_bdfs_for_group(buf, buflen, base);
+}
+
+/* Parse "0,1,2" into ordinals[]; return count or -1 on error. */
+static int parse_gpu_ordinals(const char *val, int *ordinals, int max_ord)
+{
+    const char *p = val;
+    int         n = 0;
+
+    while (*p) {
+        char *endp;
+        long  idx;
+
+        while (*p == ',' || *p == ' ')
+            p++;
+        if (*p == '\0')
+            break;
+
+        idx = strtol(p, &endp, 10);
+        if (endp == p || idx < 0)
+            return -1;
+        if (n >= max_ord)
+            return -1;
+
+        ordinals[n++] = (int) idx;
+        p = endp;
+    }
+    return n;
+}
+
+/*
+ * Read line <ordinal> from the vfio map (0-based, one GPU per line).
+ * Each line lists comma-separated /dev/vfio/<N> paths for that GPU.
+ * Returns 0 on success, -1 if the line is missing.
+ */
+static int read_map_line(FILE *fp, int ordinal, char *line, size_t linelen)
+{
+    char  *nl;
+    size_t len;
+    int    cur = 0;
+
+    rewind(fp);
+    while (fgets(line, linelen, fp) != NULL) {
+        len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '\0' || line[0] == '#')
+            continue;
+        if (cur == ordinal)
+            return 0;
+        cur++;
+    }
+    return -1;
+}
+
+/*
+ * Map SLURM_STEP_GPUS (or SLURM_JOB_GPUS) ordinals to /dev/vfio/<N> via
+ * vfio-gpu.map, then enumerate sysfs BDFs for only those groups.
+ *
+ * This avoids scanning all of /dev/vfio/*, which leaks untracked audio
+ * IOMMU groups that are openable via the kvm group but not in gres.conf.
+ */
+static void collect_pci_args(spank_t sp, int ac, char **av,
+                             char *buf, size_t buflen)
+{
+    char  gpu_env[256];
+    char  map_line[512];
+    int   ordinals[MAX_GPU_ORDINALS];
+    int   n_ord, o;
+    FILE *map_fp;
+    const char *map_path;
 
     buf[0] = '\0';
 
-    vfio_dir = opendir("/dev/vfio");
-    if (!vfio_dir)
+    if (spank_getenv(sp, "SLURM_STEP_GPUS", gpu_env, sizeof(gpu_env)) !=
+            ESPANK_SUCCESS &&
+        spank_getenv(sp, "SLURM_JOB_GPUS", gpu_env, sizeof(gpu_env)) !=
+            ESPANK_SUCCESS) {
+        slurm_verbose("vmocs: no SLURM_STEP_GPUS/SLURM_JOB_GPUS; "
+                      "skipping GPU passthrough");
         return;
-
-    while ((ent = readdir(vfio_dir)) != NULL) {
-        char           dev_path[320];
-        char           grp_path[384];
-        DIR           *grp_dir;
-        struct dirent *dev_ent;
-        char          *endp;
-        int            fd;
-
-        /* Skip non-numeric entries ("vfio", ".", "..") */
-        strtol(ent->d_name, &endp, 10);
-        if (*endp != '\0' || endp == ent->d_name)
-            continue;
-
-        /* Try to open — EPERM means Slurm's cgroup blocks it */
-        snprintf(dev_path, sizeof(dev_path), "/dev/vfio/%s", ent->d_name);
-        fd = open(dev_path, O_RDWR);
-        if (fd < 0)
-            continue;
-        close(fd);
-
-        /* Append --pci <BDF> for every device in this IOMMU group */
-        snprintf(grp_path, sizeof(grp_path),
-                 "/sys/kernel/iommu_groups/%s/devices", ent->d_name);
-        grp_dir = opendir(grp_path);
-        if (!grp_dir)
-            continue;
-
-        while ((dev_ent = readdir(grp_dir)) != NULL) {
-            size_t used;
-            if (dev_ent->d_name[0] == '.')
-                continue;
-            used = strlen(buf);
-            snprintf(buf + used, buflen - used, " --pci %s", dev_ent->d_name);
-        }
-        closedir(grp_dir);
     }
 
-    closedir(vfio_dir);
+    n_ord = parse_gpu_ordinals(gpu_env, ordinals, MAX_GPU_ORDINALS);
+    if (n_ord <= 0) {
+        slurm_verbose("vmocs: invalid GPU ordinal env '%s'", gpu_env);
+        return;
+    }
+
+    map_path = vfio_map_path(ac, av);
+    map_fp = fopen(map_path, "r");
+    if (!map_fp) {
+        slurm_error("vmocs: cannot open vfio map %s: %m", map_path);
+        return;
+    }
+
+    for (o = 0; o < n_ord; o++) {
+        char *dev, *saveptr;
+
+        if (read_map_line(map_fp, ordinals[o], map_line, sizeof(map_line)) < 0) {
+            slurm_error("vmocs: vfio map %s has no entry for GPU ordinal %d",
+                        map_path, ordinals[o]);
+            continue;
+        }
+
+        for (dev = strtok_r(map_line, ",", &saveptr); dev;
+             dev = strtok_r(NULL, ",", &saveptr)) {
+            while (*dev == ' ')
+                dev++;
+            if (*dev == '\0')
+                continue;
+            append_bdfs_for_devfile(buf, buflen, dev);
+        }
+    }
+
+    fclose(map_fp);
 }
 
 
@@ -273,7 +386,7 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
         cores = atol(buf);
 
     mem_mb = get_memory_mb(sp);
-    collect_pci_args(pci_args, sizeof(pci_args));
+    collect_pci_args(sp, ac, av, pci_args, sizeof(pci_args));
 
     if (mem_mb > 0) {
         snprintf(cmd, sizeof(cmd),

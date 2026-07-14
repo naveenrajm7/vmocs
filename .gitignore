@@ -7,3 +7,5 @@ dist/
 build/
 .claude/
 *.so
+tests/slurm-e2e/local.conf
+tests/slurm-e2e/.rendered/

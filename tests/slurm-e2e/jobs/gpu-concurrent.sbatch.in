@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --partition=@PARTITION@
+#SBATCH --account=@ACCOUNT@
+#SBATCH --nodelist=@NODELIST@
+#SBATCH --cpus-per-task=@CPUS@
+#SBATCH --mem=@MEM@
+#SBATCH --gres=@GRES@
+#SBATCH --vm-image=@VM_IMAGE@
+#SBATCH --job-name=@JOB_NAME@
+#SBATCH --output=@OUTPUT_DIR@/@JOB_NAME@-%j.out
+#SBATCH --error=@OUTPUT_DIR@/@JOB_NAME@-%j.err
+
+# Second concurrent job for multi-GPU isolation testing.
+hostname
+sleep infinity

@@ -1,0 +1,39 @@
+# Copy to local.conf and fill in site-specific values.
+# local.conf is gitignored — do not commit hostnames or account names.
+#
+#   cp local.conf.example local.conf
+
+# Slurm partition and account for VM jobs
+PARTITION=vm
+ACCOUNT=your-account
+
+# Target compute node for GPU passthrough tests (must be in PARTITION)
+NODELIST=your-gpu-node.example.com
+
+# vmocs template with pci-root-port: true
+VM_IMAGE=gpu-ubuntu
+
+# GPU GRES type on this node (see: scontrol show node <node> | grep Gres)
+GRES=gpu:your-gpu-type:1
+
+# Job resources
+CPUS_PER_TASK=4
+MEM=8G
+
+# Where the SPANK plugin is installed on compute nodes
+PLUGIN_INSTALL_DIR=/etc/slurm
+
+# vmocs config paths (as seen on compute nodes)
+VMOCS_CONF=/etc/vmocs/vmocs.yaml
+
+# VFIO ordinal map — generated per-node by deploy-plugin.sh
+VFIO_MAP=/etc/vmocs/vfio-gpu.map
+
+# Path to repo on compute nodes (for gres-conf-gen.py during deploy)
+REPO_PATH=/opt/vmocs
+
+# Slurm job output directory (must be writable)
+OUTPUT_DIR=/tmp
+
+# Seconds to wait for VM to become SSH-reachable
+VM_READY_TIMEOUT=300

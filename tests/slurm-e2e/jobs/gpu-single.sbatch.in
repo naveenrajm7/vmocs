@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --partition=@PARTITION@
+#SBATCH --account=@ACCOUNT@
+#SBATCH --nodelist=@NODELIST@
+#SBATCH --cpus-per-task=@CPUS@
+#SBATCH --mem=@MEM@
+#SBATCH --gres=@GRES@
+#SBATCH --vm-image=@VM_IMAGE@
+#SBATCH --job-name=@JOB_NAME@
+#SBATCH --output=@OUTPUT_DIR@/@JOB_NAME@-%j.out
+#SBATCH --error=@OUTPUT_DIR@/@JOB_NAME@-%j.err
+
+# VM boots in SPANK task_init (before this script runs).
+# sleep infinity keeps the Slurm step alive after task_init returns;
+# with --vm-image, task_init blocks on vmocs launch until the VM exits.
+hostname
+sleep infinity

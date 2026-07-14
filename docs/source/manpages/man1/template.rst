@@ -36,7 +36,7 @@ Examples
    $ vmocs template list
    base-ubuntu
    snap-ubuntu
-   windows-packer     Windows 11 AMD driver build — UEFI + Secure Boot ...
+   windows-packer     Windows 11 GPU driver build — UEFI + Secure Boot ...
 
    $ vmocs template show snap-ubuntu
    boot-mode            cloud-init

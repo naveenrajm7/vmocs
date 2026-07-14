@@ -11,7 +11,7 @@ Images used in these tests:
 | Template | Image | Boot mode |
 |---|---|---|
 | `base-ubuntu` | `/tmp/ubuntu-24.04.qcow2` | cloud-init |
-| `debian-vagrant` | `/home/AMD/nmuthura/vms/extracted/box.img` | vagrant |
+| `debian-vagrant` | `/var/lib/vmocs/images/debian.box` | vagrant |
 
 Both templates are defined in `confs/templates.yaml`.
 

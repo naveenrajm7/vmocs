@@ -1,7 +1,7 @@
 # vmocs Host Requirements
 
 Baseline configuration required on every compute node that will run vmocs VMs.
-Derived from `mlse-alola-b38-ws9` (Ubuntu 24.04, kernel 6.8.0-31-generic, AMD EPYC/Threadripper).
+Derived from a reference Ubuntu 24.04 host (kernel 6.8.x, x86_64 with IOMMU enabled).
 
 ---
 

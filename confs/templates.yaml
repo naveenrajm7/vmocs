@@ -4,8 +4,8 @@ base-ubuntu:
   disk-model: virtio
   disk-cache: unsafe
   mount-points:
-    nmuthura:
-      path: /home/AMD/nmuthura
+    home:
+      path: /home/user
       type: virtio-fs
   ssh-user: ubuntu
   ssh-timeout: 180
@@ -44,7 +44,7 @@ windows-vm:
   disk-model: virtio
 
 windows-packer:
-  description: Windows 11 AMD driver build — UEFI + Secure Boot + Hyper-V + TPM 2.0 (GPU passthrough excluded)
+  description: Windows 11 GPU driver build — UEFI + Secure Boot + Hyper-V + TPM 2.0 (GPU passthrough excluded)
   image: /vms/packer/base_build/base-win11-amd-driver.qcow2
   machine-type: pc-q35-8.2
   disk-model: virtio-scsi
@@ -61,14 +61,14 @@ windows-packer:
   smm: true
   tpm: true
   insert-key: false
-  ssh-key: /home/AMD/nmuthura/.ssh/id_ed25519
+  ssh-key: /etc/vmocs/keys/id_ed25519
   pci-root-port: true
   extra-hostfwd:
     - tcp::3389-:3389
     - tcp::5985-:5985
   mount-points:
-    nmuthura:
-      path: /home/AMD/nmuthura
+    home:
+      path: /home/user
       type: virtio-fs
   custom-args:
     - -no-shutdown
@@ -84,19 +84,19 @@ windows-packer:
     - type=2,manufacturer="Dell Inc.",product="PowerEdge R750"
 
 windows-packer-v2:
-  description: Windows 11 AMD driver build v2 — VirtIO-FS + WinFsp + RDP + SSH (builds4)
+  description: Windows 11 GPU driver build v2 — VirtIO-FS + WinFsp + RDP + SSH
   inherits: windows-packer
   image: /vms/packer/vmoc-save/win11-vmocs-20260427.qcow2
   insert-key: false
-  ssh-key: /home/AMD/nmuthura/devcloud/vmocs/lib/vmocs/keys/vagrant_insecure_key
+  ssh-key: /etc/vmocs/keys/vagrant_insecure_key
   vnc-port: 5912
   mount-points:
     home:
-      path: /home/AMD/nmuthura
+      path: /home/user
       type: virtio-fs
 
 debian-vagrant:
-  image: /home/AMD/nmuthura/vms/extracted/box.img
+  image: /var/lib/vmocs/images/debian.box
   boot-mode: vagrant
   ssh-user: vagrant
   ssh-timeout: 120

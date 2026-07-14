@@ -4,7 +4,7 @@
 
 ### Slurm GPU passthrough via VFIO or GIM/SR-IOV
 
-**Status: end-to-end tested and working on `ctr-halo-b48-01` (GFX1151, Ubuntu 24.04,
+**Status: end-to-end tested and working on a GFX1151 reference node (Ubuntu 24.04,
 Slurm 24.11.5). GPU display controller and audio device both visible inside VM.
 Windows VM with Adrenalin driver installed and GPU recognised.**
 
@@ -61,7 +61,7 @@ vBIOS file path. Discrete GPUs load vBIOS from their own ROM; APUs do not have o
 and QEMU must supply it:
 ```yaml
 pci-roms:
-  1002:1586: /cluster/vmocs/roms/vbios_1002_1586.bin
+  1002:1586: /etc/vmocs/roms/vbios_1002_1586.bin
 ```
 
 **Known issues / remaining work:**
@@ -272,11 +272,11 @@ does not regress single-GPU passthrough.
 - [ ] Confirm `/etc/vmocs/vfio-gpu.map` line count matches GPU count in gres.conf
 - [ ] Restart slurmd (or wait for next boot)
 
-**Single-GPU sanity (`ctr-halo-b48-01` or similar):**
+**Single-GPU sanity (any single-GPU VFIO node):**
 - [ ] `srun --gres=gpu:1 --vm-image <template> …` — GPU visible in guest via `lspci`
 - [ ] Slurm verbose log shows `SLURM_STEP_GPUS` ordinal and expected `--pci` BDFs only
 
-**Multi-GPU isolation (`ctr-navi4x-aj73-ws01`, 2× discrete GPUs, ACS on):**
+**Multi-GPU isolation (2× discrete GPUs, ACS on):**
 - [ ] Launch two concurrent jobs: `srun --gres=gpu:1 --vm-image gpu-ubuntu …` (stagger SSH port bind)
 - [ ] Each VM gets a **different** display GPU (no BDF overlap)
 - [ ] Each VM gets **only its own** audio device — Job 2 must not inherit Job 1's audio BDF

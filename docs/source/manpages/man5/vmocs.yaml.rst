@@ -55,7 +55,7 @@ Fields
 
    Example::
 
-      templates: /cluster/vmocs/config/templates.yaml
+      templates: /etc/vmocs/templates.yaml
 
 .. describe:: gpu-devices
 
@@ -86,7 +86,7 @@ Example
 
    qemu-bin: /usr/bin/qemu-system-x86_64
    runtime-dir: /tmp/vmocs
-   templates: /cluster/vmocs/config/templates.yaml
+   templates: /etc/vmocs/templates.yaml
 
    gpu-devices: []
 

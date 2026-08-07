@@ -1,0 +1,19 @@
+Source: vmocs-slurm-plugin
+Section: admin
+Priority: optional
+Maintainer: Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com>
+Standards-Version: 4.6.2
+Homepage: https://github.com/naveenrajm7/vmocs
+Build-Depends: debhelper-compat (= 13), slurm-smd-dev | libslurm-dev
+
+Package: vmocs-slurm-plugin
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Slurm plugin for booting virtual machines as jobs
+ A SPANK plugin for the Slurm Workload Manager that lets users boot a virtual
+ machine as their job with "srun --vm-image TEMPLATE". The plugin maps the
+ Slurm CPU, memory and GPU allocation onto the guest, keeps the job alive for
+ the VM's lifetime, and tears the VM down when the job ends.
+ .
+ The vmocs command line tool must be installed separately on every compute
+ node; it is not shipped as a Debian package.

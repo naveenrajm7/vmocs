@@ -15,15 +15,22 @@ for the VM's lifetime, and tears down cleanly on job exit.
 
 ## Installation
 
-> **Build against your own Slurm.** `spank_vmocs.so` must be compiled against
-> the `spank.h` of the Slurm release running on your cluster. Mismatched
-> headers will cause Slurm to refuse loading the plugin. Build the package on
-> a machine with the same Slurm version as your compute nodes, then distribute
-> the resulting `.rpm`/`.deb` to nodes running that same version. The RPM
-> records the Slurm release in its `Release` tag (e.g. `1.sl2411`) and depends
-> on the matching `libslurm.so`, so a mismatched install is rejected by the
-> package manager. The `.deb` carries no such pin — keep track of which Slurm
-> version it was built for yourself.
+> **Build against your own Slurm.** `spank_vmocs.so` records the
+> `SLURM_VERSION_NUMBER` of the `spank.h` it was compiled against, and Slurm
+> compares it on load. For SPANK plugins the comparison masks off the micro
+> release, so one build covers an entire `X.YY` series (24.11.0 through
+> 24.11.9 are interchangeable) but is rejected outright across series with
+> `Incompatible Slurm plugin version`. Rebuild and reinstall the package
+> whenever you upgrade Slurm to a new major release.
+>
+> Because the entry in `plugstack.conf` is `optional`, that rejection is only
+> a warning in the slurmd log — the symptom users see is `srun` refusing
+> `--vm-image` as an unrecognized option.
+>
+> The RPM records the series it was built against in its `Release` tag (e.g.
+> `1.sl2411`) and depends on the matching `libslurm.so`, so the package
+> manager refuses a mismatched install. The `.deb` carries no such pin, so
+> keep track of which Slurm series it was built for yourself.
 
 ### RPM (RHEL, Rocky, AlmaLinux, SLES)
 
@@ -55,7 +62,12 @@ directory (`/usr/lib64/slurm` on RPM systems, `/usr/lib/<triplet>/slurm` on
 Debian) along with a ready-made plugstack fragment at
 `/usr/share/vmocs/vmocs.conf` that already points at the installed `.so`.
 
-Reference it from Slurm and restart `slurmd` on every compute node:
+Install the package on the compute nodes **and** on the login nodes — the
+plugin registers `--vm-image` in the allocator, so `srun`, `sbatch` and
+`salloc` reject the option outright if it is missing there. `plugstack.conf`
+should be identical across the cluster.
+
+Reference the fragment from Slurm and restart `slurmd` on every compute node:
 
 ```bash
 echo 'include /usr/share/vmocs/vmocs.conf' | sudo tee -a /etc/slurm/plugstack.conf

@@ -7,7 +7,7 @@ for the VM's lifetime, and tears down cleanly on job exit.
 
 ## Requirements
 
-- Slurm with SPANK support (any version ≥ 20.11)
+- Slurm with SPANK support (version ≥ 23.11, for `spank_prepend_task_argv`)
 - `slurm-devel` headers matching the deployed Slurm version (build-time only)
 - `vmocs` installed and reachable (via PATH or `vmocs_path=` plugin arg)
 - `/etc/vmocs/vmocs.yaml` and `/etc/vmocs/templates.yaml` on compute nodes,
@@ -52,13 +52,14 @@ optional spank_vmocs.so vmocs_path=/opt/vmocs vmocs_conf=/etc/vmocs/vmocs.yaml
 
 ## Usage
 
-Once installed, both options appear in `srun --help`:
+Once installed, the options appear in `srun --help`:
 
 ```
 $ srun --help
 ...
       --vm-image=TEMPLATE     Boot a VM with the specified vmocs template name
       --vm-save=PATH          Flatten VM disk into a new qcow2 image when the job ends
+      --vm-attach=MODE        Guest attachment mode: auto (default) or none
 ```
 
 ### Resource mapping
@@ -81,53 +82,43 @@ guest OS will see ~3.6 GB after kernel/firmware consumption.
 ### srun
 
 ```bash
-# Boot a VM and hold the allocation — VM stays up until you cancel the job
-$ srun --vm-image base-ubuntu sleep infinity
+# Open an interactive shell directly inside the guest
+$ srun -n1 --pty --vm-image base-ubuntu bash -l
+
+# Run a non-interactive command in the guest
+$ srun -n1 --vm-image base-ubuntu hostname
 
 # Save VM disk state after the job ends — all changes inside the VM are
 # flattened into a new standalone qcow2 image
-$ srun --vm-image base-ubuntu --vm-save /shared/images/base-ubuntu-modified.qcow2 sleep infinity
+$ srun -n1 --vm-image base-ubuntu \
+    --vm-save /shared/images/base-ubuntu-modified.qcow2 bash -l
 Launching VM from template 'base-ubuntu' (2 cores, 1792 MB)...
 VM ready  job_id=855  ssh -i /tmp/vmocs/855/id_ed25519 -p 60222 ubuntu@127.0.0.1
 
-# From another terminal, SSH into the running VM
-$ ssh -i /tmp/vmocs/855/id_ed25519 -o StrictHostKeyChecking=no \
-      -p 60222 ubuntu@127.0.0.1
+# Retain the manual VM-as-job workflow without opening SSH automatically
+$ srun -n1 --vm-image base-ubuntu --vm-attach=none /bin/true
 
 # Request specific resources — VM will reflect them
-$ srun -c 4 --mem=8G --vm-image base-ubuntu sleep infinity
+$ srun -n1 -c 4 --mem=8G --vm-image base-ubuntu bash -l
 Launching VM from template 'base-ubuntu' (4 cores, 7680 MB)...
 VM ready  ...
 ```
 
-### sbatch
-
-```bash
-$ sbatch <<'EOF'
-#!/bin/bash
-#SBATCH --job-name=vmocs-job
-#SBATCH --output=/tmp/vmocs-%j.out
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=2G
-#SBATCH --vm-image=base-ubuntu
-
-# These lines run on the host after the VM exits (Option A behavior).
-# To run work inside the VM, SSH into it from here using the key and
-# port printed in the output above.
-echo "VM exited for job $SLURM_JOB_ID"
-EOF
-```
+The seamless-session implementation currently requires one Slurm task. Direct
+`sbatch` script wrapping also requires the script and its dependencies to be
+visible at the same paths inside the guest; automatic script staging is planned.
 
 ## Behavior
 
-The plugin uses SPANK's `slurm_spank_task_init` hook, which runs **before**
-the user's command. `vmocs launch` blocks until QEMU exits, so the Slurm job
-stays alive for exactly the VM's lifetime. The user command in the job script
-runs on the **host** after the VM exits.
+The plugin uses `spank_prepend_task_argv()` in `slurm_spank_task_init` to wrap
+the original command with `vmocs run`. The supervisor boots QEMU inside the
+Slurm task cgroup, connects to the guest over SSH, forwards stdio and a PTY,
+and returns the guest command's status to Slurm. `--vm-attach=none` selects the
+older VM-as-job behavior explicitly.
 
-This means `--vm-image` implements a **VM-as-job** model: the VM is the job
-boundary. Running commands *inside* the VM requires SSH-ing into it from
-within the job script or from another terminal while the job is running.
+For attached interactive sessions, a QMP `RESET` or SSH transport loss while
+QEMU remains alive causes vmocs to wait for SSH and reconnect. A normal shell
+exit shuts down the guest and ends the Slurm task.
 
 On job cancellation, Slurm sends SIGTERM to the vmocs process. vmocs attempts
 a graceful ACPI shutdown (up to two attempts, 10 s each), then issues a forced
@@ -279,7 +270,7 @@ containing a display-class device) and excludes audio-only groups.
 
 | Hook | Context | Action |
 |------|---------|--------|
-| `slurm_spank_init` | all | Register `--vm-image` option |
+| `slurm_spank_init` | all | Register vmocs options |
 | `slurm_spank_init_post_opt` | allocator | Persist `VMOCS_TEMPLATE` into job env |
-| `slurm_spank_task_init` | remote (job user) | `vmocs launch <template> --cores N --memory M --job-id J` (blocking) |
+| `slurm_spank_task_init` | remote (job user) | Prepend `vmocs run ... --` to the task argv |
 | `slurm_spank_exit` | remote | `vmocs stop <job_id>` (best-effort cleanup) |

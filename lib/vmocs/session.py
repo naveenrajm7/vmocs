@@ -41,6 +41,12 @@ def build_ssh_command(meta, command=(), tty=False):
 
 def _process_alive(pid):
     try:
+        waited, _ = os.waitpid(pid, os.WNOHANG)
+        if waited == pid:
+            return False
+    except ChildProcessError:
+        return False
+    try:
         os.kill(pid, 0)
         return True
     except ProcessLookupError:
@@ -117,7 +123,6 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
 
     try:
         while True:
-            reset_before = watcher.reset_count
             status = subprocess.call(build_ssh_command(meta, command, tty=tty))
             # QMP events and the SSH child's exit can race slightly.
             time.sleep(0.1)
@@ -126,9 +131,11 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
             if watcher.guest_shutdown or not _process_alive(qemu_pid):
                 return 0 if watcher.guest_shutdown else status
 
-            rebooted = watcher.reset_count > reset_before
             transport_lost = status == 255
-            if tty and (rebooted or transport_lost):
+            # A clean SSH exit is an intentional logout, even if a delayed
+            # RESET event from an earlier reboot arrives at the same time.
+            # Reconnect only for an actual SSH transport failure.
+            if tty and transport_lost:
                 if wait_for_ssh(
                         '127.0.0.1', meta['ssh_port'], meta.get('key_path'),
                         reconnect_timeout, meta['ssh_user']):

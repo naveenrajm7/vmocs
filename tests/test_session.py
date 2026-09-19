@@ -41,6 +41,15 @@ def test_build_ssh_command_allows_configured_ssh_identity():
     assert argv[-1] == 'ubuntu@127.0.0.1'
 
 
+def test_process_alive_reaps_exited_qemu(monkeypatch):
+    monkeypatch.setattr(session.os, 'waitpid', lambda pid, flags: (pid, 0))
+    kill = MagicMock()
+    monkeypatch.setattr(session.os, 'kill', kill)
+
+    assert session._process_alive(123) is False
+    kill.assert_not_called()
+
+
 def test_interactive_session_reconnects_after_reset(monkeypatch, tmp_path):
     class Watcher:
         def __init__(self, _socket):
@@ -99,3 +108,37 @@ def test_noninteractive_command_is_not_replayed_on_transport_error(
 
     assert session.run_attached_session(meta, ('train.py',)) == 255
     assert ssh.call_count == 1
+
+
+def test_clean_logout_wins_over_delayed_reset_event(monkeypatch, tmp_path):
+    class Watcher:
+        def __init__(self, _socket):
+            self.monitor = MagicMock()
+            self.reset_count = 0
+            self.guest_shutdown = False
+
+        def drain(self):
+            self.reset_count += 1
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(session, '_LifecycleWatcher', Watcher)
+    monkeypatch.setattr(session.os, 'isatty', lambda _fd: True)
+    ssh = MagicMock(return_value=0)
+    monkeypatch.setattr(session.subprocess, 'call', ssh)
+    monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
+    monkeypatch.setattr(session, 'wait_for_ssh', MagicMock(return_value=True))
+    monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
+
+    meta = _meta()
+    meta.update({
+        'pid': 123,
+        'qmp_socket': '/tmp/qmp.sock',
+        'runtime_dir': str(tmp_path / 'runtime'),
+        'overlay': str(tmp_path / 'disk.qcow2'),
+    })
+
+    assert session.run_attached_session(meta, ('bash', '-l')) == 0
+    assert ssh.call_count == 1
+    session.wait_for_ssh.assert_not_called()

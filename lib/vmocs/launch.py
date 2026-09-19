@@ -75,7 +75,8 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root'):
     return False
 
 
-def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
+def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
+              supervised=False):
     """
     Launch a VM and wait for SSH. Returns a dict with runtime metadata.
 
@@ -183,6 +184,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         firmware_vars=firmware_vars,
         pci_devices=pci_devices,
         extra_disks=template.extra_disks or [],
+        supervised=supervised,
     )
 
     # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
@@ -239,6 +241,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=()):
         'qmp_socket': qmp_socket,
         'runtime_dir': runtime_dir,
         'template': template.name,
+        'ssh_timeout': ssh_timeout,
     }
     with open(os.path.join(runtime_dir, 'vm.json'), 'w') as f:
         json.dump(meta, f, indent=2)

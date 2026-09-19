@@ -16,6 +16,7 @@ from .templates import TemplateConfig
 from .launch import launch_vm, teardown_vm, _graceful_shutdown
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
+from .session import run_attached_session
 
 
 def _load(config_path=None):
@@ -163,6 +164,50 @@ def snapshot_create(ctx, template_name, snap_dir, cores, memory):
 # launch
 # ---------------------------------------------------------------------------
 
+@cli.command('run', context_settings={'ignore_unknown_options': True})
+@click.argument('template_name')
+@click.option('--cores', default=2, show_default=True, help='Number of vCPUs')
+@click.option('--memory', default=2048, show_default=True, metavar='MB')
+@click.option('--job-id', default=None, type=int)
+@click.option('--pci', 'pci_devices', multiple=True, metavar='BDF')
+@click.option('--attach', type=click.Choice(['auto', 'none']), default='auto',
+              show_default=True, help='Attach to the guest over SSH or only hold the VM.')
+@click.option('--save', 'save_path', default=None, metavar='PATH')
+@click.argument('command', nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
+        save_path, command):
+    """Launch TEMPLATE_NAME and run COMMAND inside it over SSH."""
+    cfg, tpls = _load(ctx.obj['config_path'])
+    if template_name not in tpls:
+        raise VmocsError(f"template '{template_name}' not found")
+
+    if command and command[0] == '--':
+        command = command[1:]
+
+    tpl = tpls[template_name]
+    click.echo(f'Launching VM from template {template_name!r} '
+               f'({cores} cores, {memory} MB)...')
+    meta = launch_vm(
+        cfg, tpl, cores, memory, job_id, pci_devices=pci_devices,
+        supervised=(attach == 'auto'))
+    click.echo(f'VM ready  job_id={meta["job_id"]}  '
+               f'ssh -i {meta["key_path"]} -p {meta["ssh_port"]} '
+               f'{meta["ssh_user"]}@127.0.0.1')
+
+    if attach == 'none':
+        _block_until_exit(meta['pid'], meta['qmp_socket'])
+        if save_path:
+            from .image import VMImage
+            VMImage.convert_standalone(meta['overlay'], save_path)
+        shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
+        return
+
+    status = run_attached_session(
+        meta, command, reconnect_timeout=meta['ssh_timeout'],
+        save_path=save_path)
+    raise click.exceptions.Exit(status)
+
 @cli.command()
 @click.argument('template_name')
 @click.option('--cores', default=2, show_default=True, help='Number of vCPUs')
@@ -259,8 +304,9 @@ def vm_list(ctx):
 @click.argument('job_id', type=int)
 @click.option('--save', 'save_path', default=None, metavar='PATH',
               help='Flatten VM disk (with all changes) into a new qcow2 image.')
+@click.option('--if-exists', is_flag=True, help='Succeed silently if the VM is already gone.')
 @click.pass_context
-def stop(ctx, job_id, save_path):
+def stop(ctx, job_id, save_path, if_exists):
     """Stop a running VM by JOB_ID.
 
     Use --save PATH to capture any changes made inside the VM into a new
@@ -270,6 +316,9 @@ def stop(ctx, job_id, save_path):
     cfg, _ = _load(ctx.obj['config_path'])
     if save_path:
         click.echo(f'Saving VM disk to {save_path} ...')
+    vm_json = os.path.join(cfg.runtime_dir, str(job_id), 'vm.json')
+    if if_exists and not os.path.exists(vm_json):
+        return
     meta = teardown_vm(job_id, runtime_base=cfg.runtime_dir, save_path=save_path)
     click.echo(f'Stopped VM job_id={meta["job_id"]}')
     if save_path:

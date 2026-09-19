@@ -67,6 +67,9 @@ class QemuMonitor:
     def quit(self):
         self._validate('{"execute": "quit"}\n\n')
 
+    def powerdown(self):
+        self._validate('{"execute": "system_powerdown"}\n\n')
+
     def query_status(self):
         """Return the VM status string (e.g. 'running', 'paused')."""
         data = self._exec_sync('{"execute": "query-status"}\n\n')
@@ -93,6 +96,10 @@ class QemuMonitor:
         data = self._exec_sync('{"execute": "query-migrate"}\n\n')
         self._check_error(data)
         return data['return']
+
+    def add_event_handler(self, callback):
+        """Register callback(event); retain it while it returns truthy."""
+        self._async_cb.append(callback)
 
     def close(self):
         """Signal the reader thread to exit."""

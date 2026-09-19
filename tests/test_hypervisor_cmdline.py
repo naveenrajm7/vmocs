@@ -116,6 +116,43 @@ def test_build_qemu_cmdline_with_cloud_init_iso(tmp_path, cow_img):
     assert fake_iso in ' '.join(cmd)
 
 
+def test_supervised_session_keeps_qemu_alive_for_qmp_lifecycle(tmp_path, cow_img):
+    runtime = str(tmp_path / 'supervised')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        supervised=True,
+    )
+    assert cmd.count('-no-shutdown') == 1
+
+
+def test_supervised_session_does_not_duplicate_template_flag(tmp_path, cow_img):
+    class TemplateWithNoShutdown(FakeTemplate):
+        custom_args = ['-no-shutdown']
+
+    runtime = str(tmp_path / 'supervised-existing')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=TemplateWithNoShutdown(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        supervised=True,
+    )
+    assert cmd.count('-no-shutdown') == 1
+
+
 # ---------------------------------------------------------------------------
 # Mount point tests
 # ---------------------------------------------------------------------------

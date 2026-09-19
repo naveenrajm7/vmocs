@@ -335,7 +335,8 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        snapshot_mem=None,
                        firmware_vars=None,
                        pci_devices=(),
-                       extra_disks=()):
+                       extra_disks=(),
+                       supervised=False):
     """Build the full QEMU command line list.
 
     Args:
@@ -498,5 +499,10 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # Custom args from template
     if template.custom_args:
         cmd += template.custom_args
+
+    # A supervised session consumes QMP RESET/SHUTDOWN events. Keep QEMU alive
+    # long enough for the supervisor to distinguish reboot from poweroff.
+    if supervised and '-no-shutdown' not in cmd:
+        cmd += ['-no-shutdown']
 
     return cmd

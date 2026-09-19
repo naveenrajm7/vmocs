@@ -7,3 +7,18 @@ dist/
 build/
 .claude/
 *.so
+
+# SLURM plugin build and packaging artifacts
+plugins/slurm/*.o
+plugins/slurm/*.d
+plugins/slurm/rpm/
+plugins/slurm/debian/.debhelper/
+plugins/slurm/debian/debhelper-build-stamp
+plugins/slurm/debian/files
+plugins/slurm/debian/*.substvars
+plugins/slurm/debian/*.debhelper.log
+plugins/slurm/debian/vmocs-slurm-plugin/
+plugins/*.deb
+plugins/*.ddeb
+plugins/*.buildinfo
+plugins/*.changes

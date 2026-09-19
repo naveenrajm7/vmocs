@@ -15,25 +15,101 @@ for the VM's lifetime, and tears down cleanly on job exit.
 
 ## Installation
 
+> **Build against your own Slurm.** `spank_vmocs.so` records the
+> `SLURM_VERSION_NUMBER` of the `spank.h` it was compiled against, and Slurm
+> compares it on load. For SPANK plugins the comparison masks off the micro
+> release, so one build covers an entire `X.YY` series (24.11.0 through
+> 24.11.9 are interchangeable) but is rejected outright across series with
+> `Incompatible Slurm plugin version`. Rebuild and reinstall the package
+> whenever you upgrade Slurm to a new major release.
+>
+> Because the entry in `plugstack.conf` is `optional`, that rejection is only
+> a warning in the slurmd log — the symptom users see is `srun` refusing
+> `--vm-image` as an unrecognized option.
+>
+> The RPM records the series it was built against in its `Release` tag (e.g.
+> `1.sl2411`) and depends on the matching `libslurm.so`, so the package
+> manager refuses a mismatched install. The `.deb` carries no such pin, so
+> keep track of which Slurm series it was built for yourself.
+
+### RPM (RHEL, Rocky, AlmaLinux, SLES)
+
 ```bash
-# Build
-make -C plugins/slurm
+sudo dnf install -y rpm-build gcc make slurm-devel
 
-# Install the .so to the Slurm plugin directory
-sudo make -C plugins/slurm install
+make -C plugins/slurm rpm
+# → plugins/slurm/rpm/RPMS/x86_64/vmocs-slurm-plugin-0.0.4-1.sl2411.el9.x86_64.rpm
 
-# Register the plugin with Slurm — append to plugstack.conf or drop a file
-# in plugstack.conf.d/
-sudo tee /etc/slurm/plugstack.conf.d/vmocs.conf <<EOF
-optional spank_vmocs.so vmocs_path=/usr/local vmocs_conf=/etc/vmocs/vmocs.yaml
-EOF
+sudo dnf install ./plugins/slurm/rpm/RPMS/x86_64/vmocs-slurm-plugin-*.rpm
+```
 
+### DEB (Debian, Ubuntu)
+
+```bash
+sudo apt install -y build-essential debhelper fakeroot libslurm-dev
+# On nodes using SchedMD's own packages, install slurm-smd-dev instead of libslurm-dev.
+
+make -C plugins/slurm deb
+# → plugins/vmocs-slurm-plugin_0.0.4_amd64.deb
+
+sudo apt install ./plugins/vmocs-slurm-plugin_0.0.4_amd64.deb
+```
+
+### Enabling the plugin
+
+Both packages install the plugin into the distribution's Slurm plugin
+directory (`/usr/lib64/slurm` on RPM systems, `/usr/lib/<triplet>/slurm` on
+Debian) along with a ready-made plugstack fragment at
+`/usr/share/vmocs/vmocs.conf` that already points at the installed `.so`.
+
+Install the package on the compute nodes **and** on the login nodes — the
+plugin registers `--vm-image` in the allocator, so `srun`, `sbatch` and
+`salloc` reject the option outright if it is missing there. `plugstack.conf`
+should be identical across the cluster.
+
+Reference the fragment from Slurm and restart `slurmd` on every compute node:
+
+```bash
+echo 'include /usr/share/vmocs/vmocs.conf' | sudo tee -a /etc/slurm/plugstack.conf
 sudo systemctl restart slurmd
 ```
 
-> **Note:** `spank_vmocs.so` must be compiled against the `spank.h` from the
-> exact Slurm release running on your cluster. Mismatched headers will cause
-> Slurm to refuse loading the plugin.
+If you need [plugin arguments](#plugin-arguments), do not edit the shipped
+fragment — package upgrades overwrite it. Write your own entry instead, using
+the absolute path to the installed plugin:
+
+```bash
+sudo tee /etc/slurm/plugstack.conf.d/vmocs.conf <<'EOF'
+optional /usr/lib64/slurm/spank_vmocs.so vmocs_path=/usr/local vmocs_conf=/etc/vmocs/vmocs.yaml
+EOF
+```
+
+Neither package pulls in the `vmocs` command line tool — install it separately
+on every compute node (see the [main README](../../README.md)).
+
+### Installing without a package
+
+`make install` honours the usual `prefix`, `libdir`, `datadir` and `DESTDIR`
+variables, and writes the same plugstack fragment as the packages:
+
+```bash
+# Defaults to prefix=/usr/local → /usr/local/lib/slurm/spank_vmocs.so
+sudo make -C plugins/slurm install
+
+# Or place it alongside the distribution's own Slurm plugins
+sudo make -C plugins/slurm install prefix=/usr libdir=/usr/lib64
+```
+
+Then enable it as described above, using the path reported in the generated
+`<datadir>/vmocs/vmocs.conf`. `sudo make -C plugins/slurm uninstall` removes
+both files.
+
+### Releasing
+
+The package version lives in two places that must be bumped together:
+`VMOCS_VER` in [`Makefile`](Makefile) and the top entry of
+[`debian/changelog`](debian/changelog). The RPM spec takes its version from
+`VMOCS_VER`.
 
 ## Plugin Arguments
 

@@ -5,6 +5,19 @@ import pytest
 
 from vmocs.hypervisor import build_qemu_cmdline, block_cmdline, _has_virtiofs
 from vmocs.error import HypervisorError
+from vmocs.sidecars import plan_sidecars
+
+
+class FakeConfig:
+    sidecars = {
+        'swtpm': {'binary': '/usr/bin/swtpm'},
+        'virtiofsd': {'binary': '/usr/libexec/virtiofsd'},
+        'rocm-ernic': {'binary': '/opt/rocm-ernic/bin/rocm-ernic'},
+        'rocjitsu': {
+            'binary': '/opt/rocjitsu/bin/rocjitsu',
+            'profiles': {'mi455x': '/opt/rocjitsu/mi455x.json'},
+        },
+    }
 
 
 class FakeTemplate:
@@ -27,6 +40,8 @@ class FakeTemplate:
     hyperv = False
     smm = False
     tpm = False
+    cpu_model = None
+    emulated_devices = []
 
 
 class FakeTemplateUEFI(FakeTemplate):
@@ -165,6 +180,14 @@ class FakeTemplateWithVirtioFs(FakeTemplate):
     mount_points = {'home': {'path': '/tmp', 'type': 'virtio-fs'}}
 
 
+class FakeTemplateWithVfioUser(FakeTemplateWithVirtioFs):
+    cpu_model = 'EPYC'
+    emulated_devices = [
+        {'type': 'rocm-ernic'},
+        {'type': 'rocjitsu', 'profile': 'mi455x'},
+    ]
+
+
 def test_has_virtiofs_false():
     assert _has_virtiofs({}) is False
     assert _has_virtiofs({'home': {'path': '/tmp', 'type': 'virtio-9p'}}) is False
@@ -194,31 +217,56 @@ def test_9p_uses_plain_memory_and_fsdev(tmp_path, cow_img):
     assert any('virtio-9p-pci' in a for a in cmd)
 
 
-def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
-    """virtio-fs mounts: shared memory backend replaces plain -m."""
-    # Stub out virtiofsd finder, Popen (daemon), and image_format so the test
-    # doesn't need virtiofsd installed or a real qcow2 image.
-    monkeypatch.setattr('vmocs.hypervisor._find_virtiofsd',
-                        lambda: '/usr/libexec/virtiofsd')
-    from unittest.mock import MagicMock
-    fake_proc = MagicMock()
-    monkeypatch.setattr('vmocs.hypervisor.subprocess.Popen', lambda *a, **kw: fake_proc)
-    monkeypatch.setattr('vmocs.hypervisor.os.path.exists', lambda p: True)
-
+def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img):
+    """virtio-fs mounts: one machine-bound shared memory backend."""
     runtime = str(tmp_path / 'rt')
     os.makedirs(runtime)
+    template = FakeTemplateWithVirtioFs()
+    plans = plan_sidecars(FakeConfig(), template, runtime)
     cmd = build_qemu_cmdline(
         qemu_bin='/usr/bin/qemu-system-x86_64',
-        template=FakeTemplateWithVirtioFs(),
+        template=template,
         cores=2, memory_mb=1024,
         disk_path=cow_img, runtime_dir=runtime,
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        sidecar_plans=plans,
     )
     assert '-m' in cmd
     assert any('memory-backend-memfd' in a and '1024M' in a for a in cmd)
-    assert '-numa' in cmd
+    assert '-numa' not in cmd
+    assert cmd.count('-machine') == 1
+    assert 'memory-backend=vmocs.ram' in cmd[cmd.index('-machine') + 1]
     assert any('vhost-user-fs-pci' in a for a in cmd)
+
+
+def test_vfio_user_and_virtiofs_compose_one_machine_backend(tmp_path, cow_img):
+    runtime = str(tmp_path / 'rt-vfio-user')
+    os.makedirs(runtime)
+    template = FakeTemplateWithVfioUser()
+    plans = plan_sidecars(FakeConfig(), template, runtime)
+
+    cmd = build_qemu_cmdline(
+        qemu_bin='/opt/qemu-vfio/bin/qemu-system-x86_64',
+        template=template,
+        cores=4, memory_mb=8192,
+        disk_path=cow_img, runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        sidecar_plans=plans,
+    )
+    flat = ' '.join(cmd)
+
+    assert cmd.count('-machine') == 1
+    assert sum('memory-backend-memfd' in arg for arg in cmd) == 1
+    assert 'memory-backend=vmocs.ram' in cmd[cmd.index('-machine') + 1]
+    assert 'share=on' in flat
+    assert '-numa' not in cmd
+    assert cmd[cmd.index('-cpu') + 1] == 'EPYC'
+    assert flat.count('vfio-user-pci') == 2
+    assert 'vhost-user-fs-pci' in flat
+    assert 'vfio-pci,host=' not in flat
+    assert flat.count('"rombar":0') == 2
 
 
 # ---------------------------------------------------------------------------
@@ -227,27 +275,23 @@ def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img, monkeypatch):
 
 
 def _uefi_cmd(tmp_path, cow_img, monkeypatch):
-    """Helper: build cmdline for FakeTemplateUEFI with swtpm and image_format stubbed."""
-    from unittest.mock import MagicMock
-    fake_proc = MagicMock()
-    monkeypatch.setattr('vmocs.hypervisor.subprocess.Popen', lambda *a, **kw: fake_proc)
-    # Make swtpm socket appear immediately without polling
-    monkeypatch.setattr('vmocs.hypervisor.time.monotonic', lambda: 0)
-    monkeypatch.setattr('vmocs.hypervisor.os.path.exists', lambda p: True)
-
+    """Helper: build cmdline for FakeTemplateUEFI with a pure swtpm plan."""
     runtime = str(tmp_path / 'runtime')
     os.makedirs(runtime, exist_ok=True)
     nvram = str(tmp_path / 'nvram.fd')
     open(nvram, 'w').close()
+    template = FakeTemplateUEFI()
+    plans = plan_sidecars(FakeConfig(), template, runtime)
 
     return build_qemu_cmdline(
         qemu_bin='/usr/bin/qemu-system-x86_64',
-        template=FakeTemplateUEFI(),
+        template=template,
         cores=4, memory_mb=8192,
         disk_path=cow_img, runtime_dir=runtime,
         ssh_port=60222,
         qmp_socket=os.path.join(runtime, 'qmp.sock'),
         firmware_vars=nvram,
+        sidecar_plans=plans,
     )
 
 

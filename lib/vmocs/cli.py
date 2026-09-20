@@ -8,12 +8,18 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import click
 
 from . import __version__, VmocsError
 from .config import Config
 from .templates import TemplateConfig
-from .launch import launch_vm, teardown_vm, _graceful_shutdown
+from .launch import (
+    _graceful_shutdown,
+    is_vm_stopping,
+    launch_vm,
+    teardown_vm,
+)
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
 from .session import run_attached_session
@@ -34,7 +40,7 @@ def _load(config_path=None):
     return cfg, tpls
 
 
-def _block_until_exit(qemu_pid, qmp_socket):
+def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
     """Install SIGTERM handler with ACPI-powerdown escalation, then waitpid.
 
     Three-attempt escalation (mirrors pcocc Hypervisor.py:1840-1864):
@@ -45,6 +51,7 @@ def _block_until_exit(qemu_pid, qmp_socket):
     """
     _attempts = [0]
     _timer = [None]
+    sidecar_failure = [None]
 
     def _cancel_timer():
         if _timer[0]:
@@ -77,11 +84,32 @@ def _block_until_exit(qemu_pid, qmp_socket):
     signal.signal(signal.SIGINT, _on_signal)
 
     try:
-        os.waitpid(qemu_pid, 0)
-    except ChildProcessError:
-        pass
+        while True:
+            try:
+                waited, _ = os.waitpid(qemu_pid, os.WNOHANG)
+            except ChildProcessError:
+                break
+            if waited == qemu_pid:
+                break
+            if sidecar_manager is not None:
+                failure = sidecar_manager.failure()
+                if failure and not is_vm_stopping(
+                        os.path.dirname(qmp_socket)):
+                    name, status = failure
+                    sidecar_failure[0] = failure
+                    click.echo(
+                        f'Error: critical sidecar {name} exited with status '
+                        f'{status}; stopping VM', err=True)
+                    _send_qmp(lambda m: m.quit())
+                    from .launch import _kill_qemu
+                    _kill_qemu(qemu_pid, timeout=2)
+            time.sleep(0.2)
     finally:
         _cancel_timer()
+    if sidecar_failure[0]:
+        name, status = sidecar_failure[0]
+        raise VmocsError(
+            f'critical sidecar {name} exited with status {status}')
 
 
 @click.group()
@@ -196,11 +224,17 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
                f'{meta["ssh_user"]}@127.0.0.1')
 
     if attach == 'none':
-        _block_until_exit(meta['pid'], meta['qmp_socket'])
-        if save_path:
-            from .image import VMImage
-            VMImage.convert_standalone(meta['overlay'], save_path)
-        shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
+        try:
+            _block_until_exit(
+                meta['pid'], meta['qmp_socket'],
+                meta.get('_sidecar_manager'))
+            if save_path:
+                from .image import VMImage
+                VMImage.convert_standalone(meta['overlay'], save_path)
+        finally:
+            from .launch import stop_vm_sidecars
+            stop_vm_sidecars(meta)
+            shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
         return
 
     status = run_attached_session(
@@ -230,6 +264,9 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
         raise VmocsError(f"template '{template_name}' not found")
 
     tpl = tpls[template_name]
+    if detach and tpl.emulated_devices:
+        raise VmocsError(
+            '--detach is not yet supported with vfio-user emulated devices')
     click.echo(f'Launching VM from template {template_name!r} '
                f'({cores} cores, {memory} MB)...')
 
@@ -258,10 +295,18 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
             f'{meta["ssh_user"]}@127.0.0.1',
         ])
         _graceful_shutdown(qmp_socket, qemu_pid)
+        from .launch import stop_vm_sidecars
+        stop_vm_sidecars(meta)
+        shutil.rmtree(runtime_dir, ignore_errors=True)
         sys.exit(0)
 
-    _block_until_exit(qemu_pid, qmp_socket)
-    shutil.rmtree(runtime_dir, ignore_errors=True)
+    try:
+        _block_until_exit(
+            qemu_pid, qmp_socket, meta.get('_sidecar_manager'))
+    finally:
+        from .launch import stop_vm_sidecars
+        stop_vm_sidecars(meta)
+        shutil.rmtree(runtime_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

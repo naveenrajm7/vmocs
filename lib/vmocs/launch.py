@@ -18,6 +18,44 @@ from .image import VMImage
 from .hypervisor import build_qemu_cmdline, _make_cloud_init_iso, _find_free_port
 from .keys import VAGRANT_KEY
 from .monitor import wait_for_monitor
+from .sidecars import (
+    SidecarManager,
+    plan_sidecars,
+    preflight_qemu,
+    read_boot_id,
+    stop_persisted_sidecars,
+)
+
+
+def _write_metadata(runtime_dir, meta):
+    """Atomically persist public VM state."""
+    path = os.path.join(runtime_dir, 'vm.json')
+    temp_path = path + '.tmp'
+    public = {key: value for key, value in meta.items()
+              if not key.startswith('_')}
+    with open(temp_path, 'w') as stream:
+        json.dump(public, stream, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp_path, path)
+
+
+def is_vm_stopping(runtime_dir):
+    """Return whether another vmocs process has begun an explicit stop."""
+    try:
+        with open(os.path.join(runtime_dir, 'vm.json')) as stream:
+            return json.load(stream).get('state') == 'stopping'
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def stop_vm_sidecars(meta):
+    """Stop live launch handles or recover sidecars from persisted metadata."""
+    manager = meta.get('_sidecar_manager')
+    if manager is not None:
+        manager.stop_all()
+    else:
+        stop_persisted_sidecars(meta)
 
 
 def generate_ssh_keypair(runtime_dir):
@@ -95,7 +133,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         job_id = os.getpid()
 
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
-    os.makedirs(runtime_dir, exist_ok=True)
+    os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
+    if os.path.exists(os.path.join(runtime_dir, 'vm.json')):
+        raise HypervisorError(
+            f'runtime already exists for job {job_id}: {runtime_dir}')
 
     # Detect snapshot: template.snapshot points to a snapshot dir
     snap_dir = template.snapshot
@@ -169,6 +210,11 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         firmware_vars = os.path.join(runtime_dir, 'nvram.fd')
         shutil.copy2(vars_template, firmware_vars)
 
+    # Resolve and validate every host sidecar before the first process starts.
+    sidecar_plans = plan_sidecars(cfg, template, runtime_dir)
+    preflight_qemu(qemu_bin, template, sidecar_plans,
+                   using_snapshot=using_snapshot)
+
     # 4. Build QEMU cmdline
     cmd = build_qemu_cmdline(
         qemu_bin=qemu_bin,
@@ -184,55 +230,14 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         firmware_vars=firmware_vars,
         pci_devices=pci_devices,
         extra_disks=template.extra_disks or [],
+        sidecar_plans=sidecar_plans,
         supervised=supervised,
     )
 
-    # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
-    logging.info('Starting QEMU...')
-    qemu_pid = os.fork()
-    if qemu_pid == 0:
-        os.setpgid(0, 0)
-        logfd = os.open(os.path.join(runtime_dir, 'qemu.log'),
-                        os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-        os.dup2(logfd, 1)
-        os.dup2(logfd, 2)
-        os.execvp(cmd[0], cmd)
-
-    # 6. Connect QMP and start VM (pcocc:1676-1723)
-    logging.info('Waiting for QEMU monitor...')
-    try:
-        mon = wait_for_monitor(qmp_socket, timeout=30)
-    except HypervisorError:
-        os.waitpid(qemu_pid, 0)
-        raise HypervisorError(
-            f'QEMU failed to start (QMP timeout); see {runtime_dir}/qemu.log')
-
-    # Snapshot restore: wait for incoming migration to finish, then cont (pcocc:1713-1723)
-    if using_snapshot:
-        while mon.query_status() == 'inmigrate':
-            time.sleep(1)
-    mon.cont()
-    mon.close()  # Release QMP connection — QEMU serves one client at a time
-    logging.info('VM booting, waiting for SSH...')
-
-    # Vagrant: SSH in with the well-known insecure key, replace it with our ephemeral key
-    # Skipped when insert-key=false (pre-installed key is used as-is)
     ssh_timeout = template.ssh_timeout
-    if boot_mode == 'vagrant' and insert_key:
-        _rotate_vagrant_key('127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user)
-
-    # 7. Wait for SSH (ephemeral key for both modes)
-    if not wait_for_ssh('127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user):
-        mon = wait_for_monitor(qmp_socket, timeout=10)
-        mon.quit()
-        mon.close()
-        os.waitpid(qemu_pid, 0)
-        raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
-
-    # 8. Write metadata
     meta = {
         'job_id': job_id,
-        'pid': qemu_pid,
+        'pid': None,
         'boot_mode': boot_mode,
         'ssh_port': ssh_port,
         'ssh_user': ssh_user,
@@ -242,11 +247,77 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'runtime_dir': runtime_dir,
         'template': template.name,
         'ssh_timeout': ssh_timeout,
+        'state': 'starting',
+        'boot_id': read_boot_id(),
+        'sidecars': [],
     }
-    with open(os.path.join(runtime_dir, 'vm.json'), 'w') as f:
-        json.dump(meta, f, indent=2)
+    _write_metadata(runtime_dir, meta)
 
-    return meta
+    manager = SidecarManager(sidecar_plans)
+    qemu_pid = None
+    try:
+        manager.start_all()
+        meta['sidecars'] = manager.metadata()
+        _write_metadata(runtime_dir, meta)
+
+        # 5. fork/exec QEMU — child inherits our cgroup (pcocc:1664-1674)
+        logging.info('Starting QEMU...')
+        qemu_pid = os.fork()
+        if qemu_pid == 0:
+            os.setpgid(0, 0)
+            logfd = os.open(os.path.join(runtime_dir, 'qemu.log'),
+                            os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            os.dup2(logfd, 1)
+            os.dup2(logfd, 2)
+            try:
+                os.execvp(cmd[0], cmd)
+            except OSError as exc:
+                os.write(2, f'QEMU exec failed: {exc}\n'.encode())
+                os._exit(127)
+
+        meta['pid'] = qemu_pid
+        meta['state'] = 'qemu-starting'
+        _write_metadata(runtime_dir, meta)
+
+        # 6. Connect QMP and start VM (pcocc:1676-1723)
+        logging.info('Waiting for QEMU monitor...')
+        mon = wait_for_monitor(qmp_socket, timeout=30)
+
+        # Snapshot restore: wait for incoming migration to finish, then cont
+        if using_snapshot:
+            while mon.query_status() == 'inmigrate':
+                time.sleep(1)
+        mon.cont()
+        mon.close()  # Release QMP connection — QEMU serves one client at a time
+        logging.info('VM booting, waiting for SSH...')
+
+        # Vagrant: replace the well-known key with the ephemeral key.
+        if boot_mode == 'vagrant' and insert_key:
+            _rotate_vagrant_key(
+                '127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user)
+
+        # 7. Wait for SSH (ephemeral key for both modes)
+        if not wait_for_ssh(
+                '127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user):
+            raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
+
+        # 8. Write final metadata and retain live manager handles in memory.
+        meta['state'] = 'running'
+        _write_metadata(runtime_dir, meta)
+        meta['_sidecar_manager'] = manager
+        return meta
+    except Exception:
+        if qemu_pid is not None:
+            _kill_qemu(qemu_pid, timeout=2)
+            try:
+                os.waitpid(qemu_pid, 0)
+            except ChildProcessError:
+                pass
+        manager.stop_all()
+        meta['state'] = 'failed'
+        meta['sidecars'] = manager.metadata()
+        _write_metadata(runtime_dir, meta)
+        raise
 
 
 def _kill_qemu(pid, timeout=10):
@@ -312,15 +383,23 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
     with open(vm_json) as f:
         meta = json.load(f)
 
-    pid = meta['pid']
+    # Publish intent before QEMU closes its sidecar connections. A blocking
+    # supervisor can then distinguish expected shutdown exits from failures.
+    meta['state'] = 'stopping'
+    _write_metadata(runtime_dir, meta)
 
-    if save_path:
+    pid = meta.get('pid')
+
+    if save_path and pid is not None:
         # Graceful ACPI shutdown so guest syncs filesystems before we convert
         _graceful_shutdown(meta['qmp_socket'], pid, timeout=60)
         VMImage.convert_standalone(meta['overlay'], save_path)
-    else:
+    elif pid is not None:
         _kill_qemu(pid)
 
+    stop_vm_sidecars(meta)
+
+    # Backward-compatible cleanup for runtimes created before sidecar metadata.
     import glob, signal, shutil
     for pid_file in glob.glob(os.path.join(runtime_dir, '*.pid')):
         try:

@@ -149,7 +149,33 @@ Apply: `sysctl -p /etc/sysctl.d/vmocs-hugepages.conf`
 
 ---
 
-## 8. Ansible Playbook Checklist
+## 8. vfio-user Emulated Devices
+
+rocJitsu and rocm-ernic are userspace PCI device servers.  Unlike physical
+VFIO passthrough, this path does **not** require a host BDF, an IOMMU group, or
+binding hardware to `vfio-pci`.  It does require:
+
+- a QEMU build whose `-device help` contains `vfio-user-pci`;
+- native `rocjitsu` and/or `rocm-ernic` executables installed on every
+  eligible compute node;
+- a readable rocJitsu profile such as `gfx1250_mi455x.json`;
+- `q35` and one shared `memory-backend-memfd` bound through
+  `-machine ...,memory-backend=...`.
+
+Ubuntu 24.04's QEMU 8.2 package does not provide the needed device in the
+validated environment.  Use the packaged QEMU 11 build and verify the actual
+binary on each node:
+
+```bash
+/opt/qemu-vfio/bin/qemu-system-x86_64 -device help | grep vfio-user-pci
+```
+
+The servers and QEMU run as the Slurm job user and inherit the job cgroup.
+Their sockets and logs live under the per-VM runtime directory.
+
+---
+
+## 9. Ansible Playbook Checklist
 
 Tasks for a `vmocs-host-baseline` role:
 
@@ -163,7 +189,7 @@ Tasks for a `vmocs-host-baseline` role:
 
 ---
 
-## 9. Quick Verification Script
+## 10. Quick Verification Script
 
 Run on a candidate host to check readiness:
 

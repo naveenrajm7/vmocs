@@ -4,13 +4,19 @@
 """SSH-backed guest task sessions."""
 
 import os
+import logging
 import queue
 import shlex
 import shutil
 import subprocess
 import time
 
-from .launch import _kill_qemu, wait_for_ssh
+from .launch import (
+    _kill_qemu,
+    is_vm_stopping,
+    stop_vm_sidecars,
+    wait_for_ssh,
+)
 from .image import VMImage
 from .monitor import QemuMonitor
 
@@ -109,6 +115,28 @@ def _wait_for_qemu(pid, timeout, on_poll=None):
     return False
 
 
+def _run_ssh(meta, command, tty, watcher):
+    """Run SSH while continuing to supervise critical VM sidecars."""
+    process = subprocess.Popen(build_ssh_command(meta, command, tty=tty))
+    manager = meta.get('_sidecar_manager')
+    while process.poll() is None:
+        watcher.drain()
+        failure = manager.failure() if manager is not None else None
+        if failure and not is_vm_stopping(meta['runtime_dir']):
+            name, status = failure
+            logging.error(
+                'critical sidecar %s exited with status %s; stopping VM',
+                name, status)
+            try:
+                watcher.monitor.quit()
+            except Exception:
+                pass
+            process.terminate()
+            break
+        time.sleep(0.1)
+    return process.wait()
+
+
 def run_attached_session(meta, command=(), reconnect_timeout=180,
                          save_path=None):
     """Run COMMAND in the guest and return its exit status.
@@ -123,7 +151,7 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
 
     try:
         while True:
-            status = subprocess.call(build_ssh_command(meta, command, tty=tty))
+            status = _run_ssh(meta, command, tty, watcher)
             # QMP events and the SSH child's exit can race slightly.
             time.sleep(0.1)
             watcher.drain()
@@ -166,5 +194,6 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
             raise
         finally:
             watcher.close()
+            stop_vm_sidecars(meta)
             if remove_runtime:
                 shutil.rmtree(meta['runtime_dir'], ignore_errors=True)

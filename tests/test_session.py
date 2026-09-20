@@ -14,6 +14,13 @@ def _meta(key_path='/tmp/vmocs/42/id_ed25519'):
     }
 
 
+def _mock_ssh_process(status):
+    process = MagicMock()
+    process.poll.return_value = status
+    process.wait.return_value = status
+    return process
+
+
 def test_build_ssh_command_preserves_remote_arguments():
     argv = build_ssh_command(
         _meta(), ('bash', '-c', 'printf "%s\\n" "$1"', 'bash', 'hello world'))
@@ -69,7 +76,9 @@ def test_interactive_session_reconnects_after_reset(monkeypatch, tmp_path):
     statuses = iter([255, 0])
     monkeypatch.setattr(session, '_LifecycleWatcher', Watcher)
     monkeypatch.setattr(session.os, 'isatty', lambda _fd: True)
-    monkeypatch.setattr(session.subprocess, 'call', lambda _argv: next(statuses))
+    monkeypatch.setattr(
+        session.subprocess, 'Popen',
+        lambda _argv: _mock_ssh_process(next(statuses)))
     monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
     monkeypatch.setattr(session, 'wait_for_ssh', lambda *args: True)
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
@@ -93,8 +102,8 @@ def test_noninteractive_command_is_not_replayed_on_transport_error(
     watcher.guest_shutdown = False
     monkeypatch.setattr(session, '_LifecycleWatcher', lambda _socket: watcher)
     monkeypatch.setattr(session.os, 'isatty', lambda _fd: False)
-    ssh = MagicMock(return_value=255)
-    monkeypatch.setattr(session.subprocess, 'call', ssh)
+    ssh = MagicMock(return_value=_mock_ssh_process(255))
+    monkeypatch.setattr(session.subprocess, 'Popen', ssh)
     monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
 
@@ -125,8 +134,8 @@ def test_clean_logout_wins_over_delayed_reset_event(monkeypatch, tmp_path):
 
     monkeypatch.setattr(session, '_LifecycleWatcher', Watcher)
     monkeypatch.setattr(session.os, 'isatty', lambda _fd: True)
-    ssh = MagicMock(return_value=0)
-    monkeypatch.setattr(session.subprocess, 'call', ssh)
+    ssh = MagicMock(return_value=_mock_ssh_process(0))
+    monkeypatch.setattr(session.subprocess, 'Popen', ssh)
     monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
     monkeypatch.setattr(session, 'wait_for_ssh', MagicMock(return_value=True))
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
@@ -142,3 +151,43 @@ def test_clean_logout_wins_over_delayed_reset_event(monkeypatch, tmp_path):
     assert session.run_attached_session(meta, ('bash', '-l')) == 0
     assert ssh.call_count == 1
     session.wait_for_ssh.assert_not_called()
+
+
+def test_sidecar_failure_terminates_ssh_and_quits_qemu(monkeypatch):
+    process = MagicMock()
+    process.poll.side_effect = [None, None]
+    process.wait.return_value = -15
+    monkeypatch.setattr(session.subprocess, 'Popen', lambda _argv: process)
+    monkeypatch.setattr(session.time, 'sleep', lambda _delay: None)
+
+    watcher = MagicMock()
+    manager = MagicMock()
+    manager.failure.return_value = ('rocjitsu-0', 7)
+    meta = _meta()
+    meta['runtime_dir'] = '/tmp/nonexistent-vmocs-test-runtime'
+    meta['_sidecar_manager'] = manager
+
+    assert session._run_ssh(meta, ('true',), False, watcher) == -15
+    watcher.monitor.quit.assert_called_once_with()
+    process.terminate.assert_called_once_with()
+
+
+def test_sidecar_exit_during_external_stop_does_not_fail_ssh(
+        monkeypatch, tmp_path):
+    (tmp_path / 'vm.json').write_text('{"state": "stopping"}')
+    process = MagicMock()
+    process.poll.side_effect = [None, 0]
+    process.wait.return_value = 0
+    monkeypatch.setattr(session.subprocess, 'Popen', lambda _argv: process)
+    monkeypatch.setattr(session.time, 'sleep', lambda _delay: None)
+
+    watcher = MagicMock()
+    manager = MagicMock()
+    manager.failure.return_value = ('swtpm', 0)
+    meta = _meta()
+    meta['runtime_dir'] = str(tmp_path)
+    meta['_sidecar_manager'] = manager
+
+    assert session._run_ssh(meta, ('true',), False, watcher) == 0
+    watcher.monitor.quit.assert_not_called()
+    process.terminate.assert_not_called()

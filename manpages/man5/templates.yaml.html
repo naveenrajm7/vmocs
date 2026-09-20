@@ -205,6 +205,14 @@ different templates require different QEMU versions.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">cpu-model</span></span></dt>
+<dd><p>QEMU CPU model passed to <code class="docutils literal notranslate"><span class="pre">-cpu</span></code>.  Defaults to <code class="docutils literal notranslate"><span class="pre">host</span></code>.  For the initial
+rocJitsu/rocm-ernic bring-up, <code class="docutils literal notranslate"><span class="pre">EPYC</span></code> matches the validated vfio-user
+command line.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">machine-type</span></span></dt>
 <dd><p>QEMU machine type passed to <code class="docutils literal notranslate"><span class="pre">-machine</span></code>.  Default: <code class="docutils literal notranslate"><span class="pre">q35</span></code>.
 Examples: <code class="docutils literal notranslate"><span class="pre">q35</span></code>, <code class="docutils literal notranslate"><span class="pre">pc-q35-8.2</span></code>.</p>
@@ -286,6 +294,30 @@ performance for Windows guests.</p>
 <span class="sig-name descname"><span class="pre">tpm</span></span></dt>
 <dd><p>Boolean.  Attach a software TPM 2.0 device (<code class="docutils literal notranslate"><span class="pre">swtpm</span></code>).  Required for
 Windows 11.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">emulated-devices</span></span></dt>
+<dd><p>Ordered list of host-emulated PCI devices.  Each entry can be a type name
+or a mapping with a <code class="docutils literal notranslate"><span class="pre">type</span></code> field.  Supported types are <code class="docutils literal notranslate"><span class="pre">rocm-ernic</span></code> and
+<code class="docutils literal notranslate"><span class="pre">rocjitsu</span></code>.  rocJitsu also accepts a profile name resolved through the
+operator-owned <code class="docutils literal notranslate"><span class="pre">sidecars.rocjitsu.profiles</span></code> mapping in <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>.</p>
+<p>vmocs starts one native sidecar per entry, waits for its Unix socket, and
+attaches it with QEMU's <code class="docutils literal notranslate"><span class="pre">vfio-user-pci</span></code> device.  These devices require a
+QEMU build that reports <code class="docutils literal notranslate"><span class="pre">vfio-user-pci</span></code> in <code class="docutils literal notranslate"><span class="pre">-device</span> <span class="pre">help</span></code>, the <code class="docutils literal notranslate"><span class="pre">q35</span></code>
+machine, and shared guest memory.  Snapshots and <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">launch</span> <span class="pre">--detach</span></code>
+are intentionally rejected for these templates in the first implementation.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">qemu</span><span class="o">-</span><span class="nb">bin</span><span class="p">:</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">qemu</span><span class="o">-</span><span class="n">vfio</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">qemu</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">x86_64</span>
+<span class="n">machine</span><span class="o">-</span><span class="nb">type</span><span class="p">:</span> <span class="n">q35</span>
+<span class="n">cpu</span><span class="o">-</span><span class="n">model</span><span class="p">:</span> <span class="n">EPYC</span>
+<span class="n">emulated</span><span class="o">-</span><span class="n">devices</span><span class="p">:</span>
+  <span class="o">-</span> <span class="nb">type</span><span class="p">:</span> <span class="n">rocm</span><span class="o">-</span><span class="n">ernic</span>
+  <span class="o">-</span> <span class="nb">type</span><span class="p">:</span> <span class="n">rocjitsu</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="n">mi455x</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="describe">

@@ -13,14 +13,10 @@
 #    - Accepts plain Python dicts instead of vm objects
 #  SPDX-License-Identifier: GPL-3.0-or-later
 
-import atexit
 import logging
 import os
-import shutil
 import socket
 import subprocess
-import tempfile
-import time
 import uuid
 
 import yaml
@@ -122,40 +118,6 @@ def block_cmdline(model, path, name, index, cache, serial=None):
 
 
 # ---------------------------------------------------------------------------
-# TPM 2.0 via swtpm — started as a sidecar before QEMU
-# ---------------------------------------------------------------------------
-
-_SWTPM = '/usr/bin/swtpm'
-
-
-def _tpm_cmdline(runtime_dir):
-    """Start swtpm as an orphaned daemon (double-fork) so it survives the
-    vmocs process exiting in --detach mode, then return QEMU tpm args."""
-    tpm_dir = os.path.join(runtime_dir, 'tpm')
-    tpm_sock = os.path.join(runtime_dir, 'tpm.sock')
-    os.makedirs(tpm_dir)
-    # start_new_session=True puts swtpm in its own session so it survives the
-    # vmocs process exiting in --detach mode (no atexit kill, no SIGHUP).
-    subprocess.Popen(
-        [_SWTPM, 'socket',
-         '--tpmstate', f'dir={tpm_dir}',
-         '--ctrl', f'type=unixio,path={tpm_sock}',
-         '--tpm2'],
-        close_fds=True, start_new_session=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + 10
-    while not os.path.exists(tpm_sock):
-        if time.monotonic() > deadline:
-            raise HypervisorError('swtpm failed to start (socket timeout)')
-        time.sleep(0.1)
-    return [
-        '-chardev', f'socket,id=chrtpm,path={tpm_sock}',
-        '-tpmdev', 'emulator,id=tpm0,chardev=chrtpm',
-        '-device', 'tpm-tis,tpmdev=tpm0',
-    ]
-
-
-# ---------------------------------------------------------------------------
 # Cloud-init ISO — adapted from pcocc Hypervisor.py:1579-1646
 # ---------------------------------------------------------------------------
 
@@ -226,23 +188,6 @@ def _pci_vendor_device(bdf):
 # Mount points — adapted from pcocc Hypervisor.py:1897-1948
 # ---------------------------------------------------------------------------
 
-_VIRTIOFSD_CANDIDATES = [
-    '/usr/libexec/virtiofsd',
-    '/usr/lib/qemu/virtiofsd',
-]
-
-def _find_virtiofsd():
-    """Return path to virtiofsd binary, checking known locations then PATH."""
-    for path in _VIRTIOFSD_CANDIDATES:
-        if os.path.isfile(path):
-            return path
-    found = shutil.which('virtiofsd')
-    if found:
-        return found
-    raise HypervisorError(
-        f'virtiofsd not found; checked {_VIRTIOFSD_CANDIDATES}')
-
-
 def _has_virtiofs(mount_points):
     """Return True if any mount point uses virtio-fs."""
     for opts in mount_points.values():
@@ -253,11 +198,11 @@ def _has_virtiofs(mount_points):
     return False
 
 
-def _mount_cmdline(mount_points, runtime_dir):
-    """Build 9p/virtiofs args for each mount point."""
+def _mount_cmdline(mount_points):
+    """Build in-QEMU 9p args; virtio-fs comes from sidecar plans."""
     cmd = []
 
-    for i, (tag, opts) in enumerate(mount_points.items()):
+    for tag, opts in mount_points.items():
         if isinstance(opts, str):
             opts = {'path': opts}
         host_path = opts['path']
@@ -273,40 +218,13 @@ def _mount_cmdline(mount_points, runtime_dir):
                     f'local,id={tag},path={host_path},security_model=none{ro_str}']
             cmd += ['-device', f'virtio-9p-pci,fsdev={tag},mount_tag={tag}']
         elif mount_type == 'virtio-fs':
-            if readonly:
-                raise HypervisorError('read-only mounts not supported with virtio-fs')
-            sock = os.path.join(runtime_dir, f'virtiofs_{i}.sock')
-            pid_file = sock + '.pid'
-            p = subprocess.Popen(
-                [_find_virtiofsd(), '--rlimit-nofile', '0',
-                 '--socket-path', sock,
-                 '--sandbox', 'namespace', '--shared-dir', host_path],
-                close_fds=True,
-                start_new_session=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            deadline = time.monotonic() + 10
-            while not os.path.exists(sock):
-                if time.monotonic() > deadline:
-                    raise HypervisorError('virtiofsd failed to start (socket timeout)')
-                time.sleep(0.1)
-            with open(pid_file, 'w') as f:
-                f.write(str(p.pid))
-            cmd += ['-chardev', f'socket,id=char_fs_{i},path={sock}']
-            cmd += ['-device',
-                    f'vhost-user-fs-pci,queue-size=1024,chardev=char_fs_{i},tag={tag}']
+            # A typed sidecar plan owns the daemon and contributes its QEMU
+            # chardev/device arguments.
+            continue
         else:
             raise HypervisorError(f'unknown mount type: {mount_type}')
 
     return cmd
-
-
-def _try_kill(proc):
-    try:
-        proc.kill()
-    except OSError:
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Free SSH port allocation for user-mode networking
 # ---------------------------------------------------------------------------
@@ -336,6 +254,7 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        firmware_vars=None,
                        pci_devices=(),
                        extra_disks=(),
+                       sidecar_plans=(),
                        supervised=False):
     """Build the full QEMU command line list.
 
@@ -354,18 +273,30 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     Adapted from pcocc Hypervisor.py:1328-1646.
     """
     cmd = [qemu_bin]
+    shared_guest_memory = any(
+        plan.requires_shared_guest_memory for plan in sidecar_plans)
+
+    if shared_guest_memory:
+        cmd += ['-object',
+                f'memory-backend-memfd,id=vmocs.ram,size={memory_mb}M,share=on']
 
     # Machine type + KVM acceleration
     machine = template.machine_type
-    smm_suffix = ',smm=on' if template.smm else ''
+    machine_props = [f'type={machine}']
+    if template.smm:
+        machine_props.append('smm=on')
+    if shared_guest_memory:
+        machine_props.append('memory-backend=vmocs.ram')
     cpu_flags = ',hv_relaxed,hv_vapic,hv_spinlocks=0x1fff,kvm=off' if template.hyperv else ''
+    cpu_model = getattr(template, 'cpu_model', None) or 'host'
     try:
         open('/dev/kvm', 'r+').close()
-        cmd += ['-machine', f'type={machine},accel=kvm{smm_suffix}',
-                '-cpu', f'host{cpu_flags}']
+        machine_props.append('accel=kvm')
+        cmd += ['-machine', ','.join(machine_props),
+                '-cpu', f'{cpu_model}{cpu_flags}']
     except OSError:
         logging.warning('KVM not available, running without acceleration')
-        cmd += ['-machine', f'type={machine}{smm_suffix}']
+        cmd += ['-machine', ','.join(machine_props)]
 
     # UEFI firmware pflash pair (code read-only, vars is per-job writable copy)
     if template.firmware:
@@ -374,10 +305,6 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                 f"template '{template.name}' sets 'firmware' but firmware_vars was not provided")
         cmd += ['-drive', f'if=pflash,format=raw,readonly=on,file={template.firmware}']
         cmd += ['-drive', f'if=pflash,format=raw,file={firmware_vars}']
-
-    # TPM 2.0 sidecar (must start before QEMU opens the socket)
-    if template.tpm:
-        cmd += _tpm_cmdline(runtime_dir)
 
     # Snapshot restore: incoming migration (pcocc:1337-1341)
     if snapshot_mem:
@@ -435,17 +362,11 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     elif not template.firmware:
         cmd += ['-boot', 'order=cd']
 
-    # Memory — virtiofs (vhost-user) requires shared memory backing (pcocc:1483-1486).
-    # Use memfd (anonymous) rather than /dev/shm so large allocations aren't
-    # constrained by the tmpfs size limit.
+    # Sidecar planning decides whether external processes need shared guest
+    # memory. The single memfd is bound directly to -machine above so
+    # virtio-fs and vfio-user compose correctly.
     mount_points = template.mount_points or {}
-    if _has_virtiofs(mount_points):
-        cmd += ['-m', str(memory_mb)]
-        cmd += ['-object',
-                f'memory-backend-memfd,id=mem,size={memory_mb}M,share=on']
-        cmd += ['-numa', 'node,memdev=mem']
-    else:
-        cmd += ['-m', str(memory_mb)]
+    cmd += ['-m', str(memory_mb)]
 
     # CPU topology
     cmd += ['-smp', f'threads=1,cores=1,sockets={cores}']
@@ -458,7 +379,12 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
 
     # Mount points
     if mount_points:
-        cmd += _mount_cmdline(mount_points, runtime_dir)
+        cmd += _mount_cmdline(mount_points)
+
+    # Host sidecars are already running by QEMU exec time. Their adapters
+    # contribute only pure QEMU arguments here.
+    for plan in sidecar_plans:
+        cmd += list(plan.qemu_args)
 
     # QMP socket
     cmd += ['-qmp', f'unix:{qmp_socket},server=on,wait=off']

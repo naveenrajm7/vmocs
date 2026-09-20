@@ -1,6 +1,6 @@
-qemu-bin: /usr/bin/qemu-system-x86_64
+qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
 runtime-dir: /tmp/vmocs
-templates: /cluster/vmocs/config/templates.yaml
+templates: /home/AMD/nmuthura/devcloud/vmocs/tests/slurm-e2e/target-templates.yaml
 
 gpu-devices: []
 
@@ -8,8 +8,6 @@ network:
   mode: user
   ssh-port-range: [60222, 60322]
 
-# Host processes started and owned for the lifetime of a VM. Templates select
-# features; operators control executable and profile paths here.
 sidecars:
   startup-timeout: 60
   stop-timeout: 10

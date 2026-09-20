@@ -24,6 +24,8 @@ ssh / ssh-keygen     # key generation and connectivity checks
 lzop                 # memory snapshot compression (snapshot mode only)
 swtpm                # TPM 2.0 emulation (only when tpm: true)
 virtiofsd            # VirtioFS daemon (only when mount-points use type: virtio-fs)
+rocjitsu             # Optional vfio-user GPU emulator
+rocm-ernic           # Optional vfio-user NIC emulator
 ```
 
 Install on Debian/Ubuntu:
@@ -95,3 +97,6 @@ Unit tests:
 
 End-to-end test scenarios (boot modes, key rotation, concurrent launch):
 see [`tests/e2e.md`](tests/e2e.md).
+
+The sidecar lifecycle design and vfio-user implementation plan are documented
+in [`development/vmocs-sidecar-architecture.md`](development/vmocs-sidecar-architecture.md).

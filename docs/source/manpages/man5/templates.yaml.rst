@@ -104,6 +104,12 @@ Fields
    Override the global ``qemu-bin`` path for this template.  Useful when
    different templates require different QEMU versions.
 
+.. describe:: cpu-model
+
+   QEMU CPU model passed to ``-cpu``.  Defaults to ``host``.  For the initial
+   rocJitsu/rocm-ernic bring-up, ``EPYC`` matches the validated vfio-user
+   command line.
+
 .. describe:: machine-type
 
    QEMU machine type passed to ``-machine``.  Default: ``q35``.
@@ -164,6 +170,29 @@ Fields
 
    Boolean.  Attach a software TPM 2.0 device (``swtpm``).  Required for
    Windows 11.
+
+.. describe:: emulated-devices
+
+   Ordered list of host-emulated PCI devices.  Each entry can be a type name
+   or a mapping with a ``type`` field.  Supported types are ``rocm-ernic`` and
+   ``rocjitsu``.  rocJitsu also accepts a profile name resolved through the
+   operator-owned ``sidecars.rocjitsu.profiles`` mapping in ``vmocs.yaml``.
+
+   vmocs starts one native sidecar per entry, waits for its Unix socket, and
+   attaches it with QEMU's ``vfio-user-pci`` device.  These devices require a
+   QEMU build that reports ``vfio-user-pci`` in ``-device help``, the ``q35``
+   machine, and shared guest memory.  Snapshots and ``vmocs launch --detach``
+   are intentionally rejected for these templates in the first implementation.
+
+   Example::
+
+      qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+      machine-type: q35
+      cpu-model: EPYC
+      emulated-devices:
+        - type: rocm-ernic
+        - type: rocjitsu
+          profile: mi455x
 
 .. describe:: insert-key
 

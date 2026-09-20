@@ -20,7 +20,9 @@ TEMPLATE_SETTINGS = {
     'disk-cache':    (False, 'unsafe',   True),
     'custom-args':   (False, [],         True),
     'qemu-bin':      (False, None,       True),
+    'cpu-model':     (False, None,       True),
     'mount-points':  (False, {},         True),
+    'emulated-devices': (False, [],      True),
     'boot-mode':     (False, 'cloud-init', True),  # 'cloud-init' or 'vagrant'
     'user-data':     (False, None,       True),
     'bind-vcpus':    (False, False,      True),

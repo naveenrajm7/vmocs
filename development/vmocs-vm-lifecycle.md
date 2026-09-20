@@ -2,15 +2,18 @@
 
 ## Process model
 
-When `vmocs launch` is called, two sidecar processes are started before QEMU:
+When `vmocs launch` is called, a VM-scoped manager starts the requested
+sidecar processes before QEMU:
 
 - **swtpm** (if `tpm: true`) — TPM 2.0 emulator, communicates with QEMU via a Unix socket.
 - **virtiofsd** (if `mount-points` contains `virtio-fs` entries) — one process per mount.
+- **rocJitsu** (if requested in `emulated-devices`) — vfio-user GPU emulator.
+- **rocm-ernic** (if requested in `emulated-devices`) — vfio-user NIC emulator.
 
-All three (swtpm, virtiofsd, QEMU) are started with `os.setpgid(0,0)` or
-`start_new_session=True`, putting each in its own process group / session. This means
-they are reparented to init when the vmocs launcher process exits and are immune to
-SIGHUP.
+QEMU and every sidecar get their own process group/session while retaining the
+caller's Slurm cgroup. vmocs preflights the full plan, starts sidecars
+transactionally, waits for real Unix sockets, records verified process identities,
+and stops process groups in reverse start order.
 
 ## Blocking mode (default — Slurm integration)
 
@@ -27,7 +30,8 @@ vmocs SIGTERM handler:
 2. Attempt 3: sends QMP `quit` to force QEMU exit; falls back to SIGKILL after 5 s.
 
 The runtime directory (`/tmp/vmocs/<job_id>/`) is removed in the `finally` block after
-`waitpid` returns.
+QEMU exits and all sidecars have been stopped and reaped. Critical sidecar death
+also causes the VM to stop.
 
 ## Detach mode (interactive use)
 
@@ -35,9 +39,11 @@ The runtime directory (`/tmp/vmocs/<job_id>/`) is removed in the `finally` block
 vmocs launch <template> --detach
 ```
 
-The launcher returns immediately after printing "VM ready". QEMU (and its sidecars)
-continue running as orphans under init. Use `vmocs list` and `vmocs stop <job_id>` to
-manage them.
+The launcher returns immediately after printing "VM ready". QEMU and non-vfio-user
+sidecars continue running as orphans under init and are recoverable through the
+runtime manifest. Use `vmocs list` and `vmocs stop <job_id>` to manage them.
+Templates with rocJitsu or rocm-ernic currently reject detach mode until a dedicated
+detached supervisor is implemented.
 
 ## Guest reboot
 
@@ -53,7 +59,7 @@ exits QEMU and therefore no longer ends the Slurm job. The job ends only when Sl
 sends SIGTERM (walltime / `scancel`). This is acceptable — Slurm, not the guest, owns
 the job lifetime.
 
-### Limitation: reboot and shutdown are indistinguishable with `-no-shutdown`
+### Reboot and shutdown with `-no-shutdown`
 
 `-no-shutdown` is an all-or-nothing flag. The two Slurm user scenarios cannot both be
 satisfied at once with it:
@@ -71,7 +77,9 @@ shutdowns. A watcher thread can call `mon.quit()` only on `SHUTDOWN`, giving:
 |---|---|---|
 | | Job stays ✓ | Job ends ✓ |
 
-This is not yet implemented.
+The attached `vmocs run` path implements this QMP watcher: `RESET` preserves the VM
+and `SHUTDOWN` ends it. The older bare `vmocs launch` blocking path still relies on
+its signal/QMP shutdown loop.
 
 ## Why swtpm must be daemonized
 
@@ -104,8 +112,9 @@ Sends QMP `system_powerdown` (ACPI soft-off) and waits up to 60 s for the guest 
 flush filesystems cleanly, then falls back to SIGTERM → SIGKILL. Removes the runtime
 directory and (if `--save` was given) converts the COW overlay to a standalone qcow2.
 
-swtpm and virtiofsd are not explicitly stopped by `vmocs stop` — they exit on their
-own when QEMU closes the socket connections.
+After QEMU exits, vmocs explicitly sends TERM and then KILL if needed to every
+verified persisted sidecar process group. PID start time and host boot ID checks
+protect against signaling a reused PID.
 
 ## COW overlay and data persistence
 

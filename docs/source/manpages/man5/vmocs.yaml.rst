@@ -79,6 +79,35 @@ Fields
 
    Default: ``[60222, 60322]``
 
+.. describe:: sidecars
+
+   Operator-owned settings for VM-scoped host processes.  ``startup-timeout``
+   controls how long vmocs waits for Unix-socket readiness, and
+   ``stop-timeout`` controls the graceful termination interval.  Both are in
+   seconds and can also be overridden within an individual sidecar mapping.
+
+   ``swtpm.binary``, ``virtiofsd.binary``, ``rocjitsu.binary``, and
+   ``rocm-ernic.binary`` select installed executables.  The
+   ``rocjitsu.profiles`` mapping is an allow-list from template profile names
+   to readable rocJitsu JSON configuration files.  User templates cannot
+   provide arbitrary executable paths or process arguments.
+
+   Example::
+
+      sidecars:
+        startup-timeout: 60
+        stop-timeout: 10
+        swtpm:
+          binary: /usr/bin/swtpm
+        virtiofsd:
+          binary: /usr/libexec/virtiofsd
+        rocjitsu:
+          binary: /opt/rocjitsu/bin/rocjitsu
+          profiles:
+            mi455x: /opt/rocjitsu/share/rocjitsu/configs/gfx1250_mi455x.json
+        rocm-ernic:
+          binary: /opt/rocm-ernic/bin/rocm-ernic
+
 Example
 -------
 
@@ -93,6 +122,10 @@ Example
    network:
      mode: user
      ssh-port-range: [60222, 60322]
+
+   sidecars:
+     startup-timeout: 60
+     stop-timeout: 10
 
 See Also
 --------

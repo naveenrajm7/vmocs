@@ -11,7 +11,12 @@ import shutil
 import subprocess
 import time
 
-from .launch import _kill_qemu, stop_vm_sidecars, wait_for_ssh
+from .launch import (
+    _kill_qemu,
+    is_vm_stopping,
+    stop_vm_sidecars,
+    wait_for_ssh,
+)
 from .image import VMImage
 from .monitor import QemuMonitor
 
@@ -117,7 +122,7 @@ def _run_ssh(meta, command, tty, watcher):
     while process.poll() is None:
         watcher.drain()
         failure = manager.failure() if manager is not None else None
-        if failure:
+        if failure and not is_vm_stopping(meta['runtime_dir']):
             name, status = failure
             logging.error(
                 'critical sidecar %s exited with status %s; stopping VM',

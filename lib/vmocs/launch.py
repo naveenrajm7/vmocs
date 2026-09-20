@@ -40,6 +40,15 @@ def _write_metadata(runtime_dir, meta):
     os.replace(temp_path, path)
 
 
+def is_vm_stopping(runtime_dir):
+    """Return whether another vmocs process has begun an explicit stop."""
+    try:
+        with open(os.path.join(runtime_dir, 'vm.json')) as stream:
+            return json.load(stream).get('state') == 'stopping'
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def stop_vm_sidecars(meta):
     """Stop live launch handles or recover sidecars from persisted metadata."""
     manager = meta.get('_sidecar_manager')
@@ -373,6 +382,11 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
 
     with open(vm_json) as f:
         meta = json.load(f)
+
+    # Publish intent before QEMU closes its sidecar connections. A blocking
+    # supervisor can then distinguish expected shutdown exits from failures.
+    meta['state'] = 'stopping'
+    _write_metadata(runtime_dir, meta)
 
     pid = meta.get('pid')
 

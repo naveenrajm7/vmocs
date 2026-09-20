@@ -164,8 +164,30 @@ def test_sidecar_failure_terminates_ssh_and_quits_qemu(monkeypatch):
     manager = MagicMock()
     manager.failure.return_value = ('rocjitsu-0', 7)
     meta = _meta()
+    meta['runtime_dir'] = '/tmp/nonexistent-vmocs-test-runtime'
     meta['_sidecar_manager'] = manager
 
     assert session._run_ssh(meta, ('true',), False, watcher) == -15
     watcher.monitor.quit.assert_called_once_with()
     process.terminate.assert_called_once_with()
+
+
+def test_sidecar_exit_during_external_stop_does_not_fail_ssh(
+        monkeypatch, tmp_path):
+    (tmp_path / 'vm.json').write_text('{"state": "stopping"}')
+    process = MagicMock()
+    process.poll.side_effect = [None, 0]
+    process.wait.return_value = 0
+    monkeypatch.setattr(session.subprocess, 'Popen', lambda _argv: process)
+    monkeypatch.setattr(session.time, 'sleep', lambda _delay: None)
+
+    watcher = MagicMock()
+    manager = MagicMock()
+    manager.failure.return_value = ('swtpm', 0)
+    meta = _meta()
+    meta['runtime_dir'] = str(tmp_path)
+    meta['_sidecar_manager'] = manager
+
+    assert session._run_ssh(meta, ('true',), False, watcher) == 0
+    watcher.monitor.quit.assert_not_called()
+    process.terminate.assert_not_called()

@@ -45,3 +45,21 @@ def test_blocking_launch_fails_when_critical_sidecar_exits(monkeypatch):
         cli._block_until_exit(pid, '/tmp/qmp.sock', manager)
 
     kill.assert_called_once_with(pid, timeout=2)
+
+
+def test_blocking_launch_accepts_sidecar_exit_during_external_stop(
+        monkeypatch, tmp_path):
+    pid = 4321
+    waits = iter([(0, 0), (pid, 0)])
+    (tmp_path / 'vm.json').write_text('{"state": "stopping"}')
+    monkeypatch.setattr(cli.signal, 'signal', lambda *_args: None)
+    monkeypatch.setattr(cli.os, 'waitpid', lambda *_args: next(waits))
+    monkeypatch.setattr(cli.time, 'sleep', lambda _delay: None)
+    kill = MagicMock()
+    monkeypatch.setattr('vmocs.launch._kill_qemu', kill)
+    manager = MagicMock()
+    manager.failure.return_value = ('swtpm', 0)
+
+    cli._block_until_exit(pid, str(tmp_path / 'qmp.sock'), manager)
+
+    kill.assert_not_called()

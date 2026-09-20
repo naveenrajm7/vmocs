@@ -14,7 +14,12 @@ import click
 from . import __version__, VmocsError
 from .config import Config
 from .templates import TemplateConfig
-from .launch import launch_vm, teardown_vm, _graceful_shutdown
+from .launch import (
+    _graceful_shutdown,
+    is_vm_stopping,
+    launch_vm,
+    teardown_vm,
+)
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
 from .session import run_attached_session
@@ -88,7 +93,8 @@ def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
                 break
             if sidecar_manager is not None:
                 failure = sidecar_manager.failure()
-                if failure:
+                if failure and not is_vm_stopping(
+                        os.path.dirname(qmp_socket)):
                     name, status = failure
                     sidecar_failure[0] = failure
                     click.echo(

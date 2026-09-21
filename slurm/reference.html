@@ -1,0 +1,291 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slurm plugin reference &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Troubleshooting the Slurm plugin" href="troubleshooting.html" />
+    <link rel="prev" title="GPU passthrough" href="gpu-passthrough.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Using vmocs with Slurm</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#choose-your-guide">Choose your guide</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="user-guide.html">Slurm user guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Slurm plugin reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#user-options">User options</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#plugin-arguments">Plugin arguments</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#resource-mapping">Resource mapping</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#command-transformation">Command transformation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#lifecycle-hooks">Lifecycle hooks</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Using vmocs with Slurm</a></li>
+      <li class="breadcrumb-item active">Slurm plugin reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="slurm-plugin-reference">
+<span id="id1"></span><h1>Slurm plugin reference<a class="headerlink" href="#slurm-plugin-reference" title="Link to this heading"></a></h1>
+<section id="user-options">
+<h2>User options<a class="headerlink" href="#user-options" title="Link to this heading"></a></h2>
+<p>The plugin registers these options with Slurm clients and remote job steps:</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-vm-image">
+<span class="sig-name descname"><span class="pre">--vm-image</span></span><span class="sig-prename descclassname"> <span class="pre">TEMPLATE</span></span><a class="headerlink" href="#cmdoption-vm-image" title="Link to this definition"></a></dt>
+<dd><p>Enable vmocs and boot the named template.  The template must be available
+through the compute node's vmocs configuration.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-vm-save">
+<span class="sig-name descname"><span class="pre">--vm-save</span></span><span class="sig-prename descclassname"> <span class="pre">PATH</span></span><a class="headerlink" href="#cmdoption-vm-save" title="Link to this definition"></a></dt>
+<dd><p>After guest shutdown, flatten the primary disk overlay into a standalone
+qcow2 file at the host path <em>PATH</em>.  Meaningful only with <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-vm-attach">
+<span class="sig-name descname"><span class="pre">--vm-attach</span></span><span class="sig-prename descclassname"> <span class="pre">MODE</span></span><a class="headerlink" href="#cmdoption-vm-attach" title="Link to this definition"></a></dt>
+<dd><p>Select <code class="docutils literal notranslate"><span class="pre">auto</span></code> (the default) to run the Slurm task command inside the guest
+over SSH.  Select <code class="docutils literal notranslate"><span class="pre">none</span></code> to boot the VM, print connection details, and
+wait for QEMU without executing the task command in the guest.</p>
+</dd></dl>
+
+<p>All current modes require a job step with exactly one task.  The plugin
+returns an error when Slurm reports a larger task count.</p>
+</section>
+<section id="plugin-arguments">
+<span id="slurm-plugin-arguments"></span><h2>Plugin arguments<a class="headerlink" href="#plugin-arguments" title="Link to this heading"></a></h2>
+<p>Plugin arguments follow the shared-object path in <code class="docutils literal notranslate"><span class="pre">plugstack.conf</span></code>.  They
+are cluster configuration, not options users pass to <code class="docutils literal notranslate"><span class="pre">srun</span></code>.</p>
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">vmocs_path=PREFIX</span></span></dt>
+<dd><p>Execute <code class="docutils literal notranslate"><span class="pre">PREFIX/bin/vmocs</span></code>.  Without this argument, the plugin executes
+<code class="docutils literal notranslate"><span class="pre">vmocs</span></code> through <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">vmocs_conf=PATH</span></span></dt>
+<dd><p>Add <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code> to every <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> and cleanup invocation.
+Without it, the normal vmocs configuration resolution rules apply.</p>
+</dd></dl>
+
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">optional</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">spank_vmocs</span><span class="o">.</span><span class="n">so</span> <span class="n">vmocs_path</span><span class="o">=/</span><span class="n">opt</span><span class="o">/</span><span class="n">vmocs</span> <span class="n">vmocs_conf</span><span class="o">=/</span><span class="n">etc</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">vmocs</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+</section>
+<section id="resource-mapping">
+<span id="slurm-resource-mapping"></span><h2>Resource mapping<a class="headerlink" href="#resource-mapping" title="Link to this heading"></a></h2>
+<section id="cpu-and-memory">
+<h3>CPU and memory<a class="headerlink" href="#cpu-and-memory" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 36.0%" />
+<col style="width: 38.0%" />
+<col style="width: 26.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Slurm request</p></th>
+<th class="head"><p>Source</p></th>
+<th class="head"><p>vmocs argument</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-c</span> <span class="pre">N</span></code> / <code class="docutils literal notranslate"><span class="pre">--cpus-per-task=N</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SLURM_CPUS_PER_TASK</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--cores</span> <span class="pre">N</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--mem=SIZE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SLURM_MEM_PER_NODE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--memory</span> <span class="pre">MB</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--mem-per-cpu=SIZE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SLURM_MEM_PER_CPU</span></code> times cores</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--memory</span> <span class="pre">MB</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>If <code class="docutils literal notranslate"><span class="pre">SLURM_CPUS_PER_TASK</span></code> is unavailable, the plugin passes one core.  If no
+supported Slurm memory variable is available, it omits <code class="docutils literal notranslate"><span class="pre">--memory</span></code> and
+<code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> uses its 2048 MB default.</p>
+<p>Before passing memory to QEMU, the plugin subtracts the greater of five
+percent or 256 MB for host-side QEMU overhead.  The result is clamped to a
+minimum of 512 MB.  For example, a 4096 MB allocation produces a 3840 MB QEMU
+configuration.  Guest firmware and the kernel consume additional memory, so
+tools inside the guest report a smaller usable total.</p>
+</section>
+<section id="gpu-devices">
+<h3>GPU devices<a class="headerlink" href="#gpu-devices" title="Link to this heading"></a></h3>
+<p>Slurm assigns GPU GRES entries whose <code class="docutils literal notranslate"><span class="pre">File=</span></code> values are numeric
+<code class="docutils literal notranslate"><span class="pre">/dev/vfio/&lt;group&gt;</span></code> nodes.  From inside the job's device cgroup, the plugin:</p>
+<ol class="arabic simple">
+<li><p>attempts to open every numeric VFIO group node;</p></li>
+<li><p>keeps only the nodes allowed to the job;</p></li>
+<li><p>enumerates the PCI BDFs in each permitted IOMMU group; and</p></li>
+<li><p>appends one <code class="docutils literal notranslate"><span class="pre">--pci</span> <span class="pre">BDF</span></code> argument for each function.</p></li>
+</ol>
+<p>This deliberately uses the device cgroup as the allocation source of truth;
+the plugin does not select the first free GPU or maintain a separate
+GPU-index map.  See <a class="reference internal" href="gpu-passthrough.html"><span class="doc">GPU passthrough</span></a> for node configuration.</p>
+</section>
+</section>
+<section id="command-transformation">
+<h2>Command transformation<a class="headerlink" href="#command-transformation" title="Link to this heading"></a></h2>
+<p>For an attached task resembling:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">c4</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">8</span><span class="n">G</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">hostname</span>
+</pre></div>
+</div>
+<p>the task-init hook prepends an argv sequence equivalent to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">cores</span> <span class="mi">4</span> <span class="o">--</span><span class="n">memory</span> <span class="mi">7783</span> <span class="o">--</span><span class="n">job</span><span class="o">-</span><span class="nb">id</span> <span class="n">JOB_ID</span> \
+    <span class="o">--</span><span class="n">attach</span> <span class="n">auto</span> <span class="o">--</span> <span class="n">hostname</span>
+</pre></div>
+</div>
+<p>The exact memory value follows the headroom calculation.  Any configured
+<code class="docutils literal notranslate"><span class="pre">--config</span></code>, save path, and detected PCI devices are inserted before the
+<code class="docutils literal notranslate"><span class="pre">--</span></code> separator.  Slurm then executes vmocs as the actual task process.</p>
+</section>
+<section id="lifecycle-hooks">
+<h2>Lifecycle hooks<a class="headerlink" href="#lifecycle-hooks" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Hook</p></th>
+<th class="head"><p>Action</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></p></td>
+<td><p>Register the three Slurm options.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init_post_opt</span></code></p></td>
+<td><p>Persist the selected template in the job environment in allocator
+context.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_task_init</span></code></p></td>
+<td><p>Validate one task and prepend <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> to the original task argv.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_exit</span></code></p></td>
+<td><p>Run <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">stop</span> <span class="pre">JOB_ID</span> <span class="pre">--if-exists</span></code> as best-effort remote cleanup.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The primary cleanup belongs to <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code>.  The exit hook is a fallback and
+does not turn a cleanup failure into a failed Slurm job.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="gpu-passthrough.html" class="btn btn-neutral float-left" title="GPU passthrough" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="troubleshooting.html" class="btn btn-neutral float-right" title="Troubleshooting the Slurm plugin" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

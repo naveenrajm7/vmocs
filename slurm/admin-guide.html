@@ -1,0 +1,292 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cluster administrator guide &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="GPU passthrough" href="gpu-passthrough.html" />
+    <link rel="prev" title="Slurm user guide" href="user-guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Using vmocs with Slurm</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#choose-your-guide">Choose your guide</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="user-guide.html">Slurm user guide</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Cluster administrator guide</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#build-a-package">Build a package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#install-without-a-package">Install without a package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#enable-the-plugin">Enable the plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#configure-plugin-arguments">Configure plugin arguments</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#install-the-vmocs-configuration">Install the vmocs configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#validate-the-deployment">Validate the deployment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#upgrade-compatibility">Upgrade compatibility</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a></li>
+<li class="toctree-l3"><a class="reference internal" href="reference.html">Slurm plugin reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Using vmocs with Slurm</a></li>
+      <li class="breadcrumb-item active">Cluster administrator guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/admin-guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="cluster-administrator-guide">
+<span id="slurm-admin-guide"></span><h1>Cluster administrator guide<a class="headerlink" href="#cluster-administrator-guide" title="Link to this heading"></a></h1>
+<p>Deploy both the vmocs CLI and its SPANK plugin.  The CLI runs on compute
+nodes; the plugin must be available wherever Slurm parses its options as well
+as wherever the job step runs.</p>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Slurm 23.11 or newer, which provides <code class="docutils literal notranslate"><span class="pre">spank_prepend_task_argv()</span></code>.</p></li>
+<li><p>Build headers matching the deployed Slurm release series.</p></li>
+<li><p>A working vmocs installation and QEMU/KVM setup on every compute node.</p></li>
+<li><p>Identical vmocs system configuration and templates, or shared configuration
+paths, on the compute nodes.</p></li>
+<li><p>The plugin installed on login/submission nodes and compute nodes.</p></li>
+</ul>
+<p>Complete <a class="reference internal" href="../getting-started.html"><span class="doc">Getting started</span></a> on a representative compute node before
+integrating Slurm.  For GPU nodes, also complete <a class="reference internal" href="gpu-passthrough.html"><span class="doc">GPU passthrough</span></a>.</p>
+</section>
+<section id="build-a-package">
+<h2>Build a package<a class="headerlink" href="#build-a-package" title="Link to this heading"></a></h2>
+<p>Build the plugin against the same Slurm release series used by the cluster.</p>
+<section id="rpm-systems">
+<h3>RPM systems<a class="headerlink" href="#rpm-systems" title="Link to this heading"></a></h3>
+<p>On RHEL, Rocky Linux, AlmaLinux, or SLES:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">dnf</span> <span class="n">install</span> <span class="n">rpm</span><span class="o">-</span><span class="n">build</span> <span class="n">gcc</span> <span class="n">make</span> <span class="n">slurm</span><span class="o">-</span><span class="n">devel</span>
+<span class="n">make</span> <span class="o">-</span><span class="n">C</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span> <span class="n">rpm</span>
+<span class="n">sudo</span> <span class="n">dnf</span> <span class="n">install</span> <span class="o">./</span><span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">rpm</span><span class="o">/</span><span class="n">RPMS</span><span class="o">/*/</span><span class="n">vmocs</span><span class="o">-</span><span class="n">slurm</span><span class="o">-</span><span class="n">plugin</span><span class="o">-*.</span><span class="n">rpm</span>
+</pre></div>
+</div>
+<p>The RPM release records the build's Slurm series, for example <code class="docutils literal notranslate"><span class="pre">sl2411</span></code>, and
+depends on the matching <code class="docutils literal notranslate"><span class="pre">libslurm</span></code>.</p>
+</section>
+<section id="debian-systems">
+<h3>Debian systems<a class="headerlink" href="#debian-systems" title="Link to this heading"></a></h3>
+<p>On Debian or Ubuntu:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">apt</span> <span class="n">install</span> <span class="n">build</span><span class="o">-</span><span class="n">essential</span> <span class="n">debhelper</span> <span class="n">fakeroot</span> <span class="n">libslurm</span><span class="o">-</span><span class="n">dev</span>
+<span class="n">make</span> <span class="o">-</span><span class="n">C</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span> <span class="n">deb</span>
+<span class="n">sudo</span> <span class="n">apt</span> <span class="n">install</span> <span class="o">./</span><span class="n">plugins</span><span class="o">/</span><span class="n">vmocs</span><span class="o">-</span><span class="n">slurm</span><span class="o">-</span><span class="n">plugin_</span><span class="o">*.</span><span class="n">deb</span>
+</pre></div>
+</div>
+<p>When using SchedMD's packages, install <code class="docutils literal notranslate"><span class="pre">slurm-smd-dev</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">libslurm-dev</span></code>.  The Debian package does not encode the Slurm release series;
+administrators must keep the build and deployed series aligned.</p>
+</section>
+</section>
+<section id="install-without-a-package">
+<h2>Install without a package<a class="headerlink" href="#install-without-a-package" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install</span></code> honors <code class="docutils literal notranslate"><span class="pre">prefix</span></code>, <code class="docutils literal notranslate"><span class="pre">libdir</span></code>, <code class="docutils literal notranslate"><span class="pre">datarootdir</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">DESTDIR</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># /usr/local/lib/slurm/spank_vmocs.so by default</span>
+<span class="n">sudo</span> <span class="n">make</span> <span class="o">-</span><span class="n">C</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span> <span class="n">install</span>
+
+<span class="c1"># Or install beside distribution-provided Slurm plugins</span>
+<span class="n">sudo</span> <span class="n">make</span> <span class="o">-</span><span class="n">C</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span> <span class="n">install</span> <span class="n">prefix</span><span class="o">=/</span><span class="n">usr</span> <span class="n">libdir</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib64</span>
+</pre></div>
+</div>
+<p>The command also writes a plugstack fragment under
+<code class="docutils literal notranslate"><span class="pre">&lt;datadir&gt;/vmocs/vmocs.conf</span></code>.  <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">uninstall</span></code> removes the two installed
+files but does not edit the cluster's <code class="docutils literal notranslate"><span class="pre">plugstack.conf</span></code>.</p>
+</section>
+<section id="enable-the-plugin">
+<h2>Enable the plugin<a class="headerlink" href="#enable-the-plugin" title="Link to this heading"></a></h2>
+<p>Packages install the shared object in the distribution's Slurm plugin
+directory and a ready-made fragment at <code class="docutils literal notranslate"><span class="pre">/usr/share/vmocs/vmocs.conf</span></code>.  Add
+the fragment to the main plugstack configuration:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">include</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">vmocs</span><span class="o">.</span><span class="n">conf</span>
+</pre></div>
+</div>
+<p>The shipped entry is <code class="docutils literal notranslate"><span class="pre">optional</span></code> so an installation problem does not stop
+unrelated Slurm jobs.  It also means plugin load failures may appear only as a
+daemon or client warning, followed by <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> being unrecognized.</p>
+<p>Install the plugin and plugstack configuration on:</p>
+<ul class="simple">
+<li><p>login and submission nodes, where <code class="docutils literal notranslate"><span class="pre">srun</span></code>, <code class="docutils literal notranslate"><span class="pre">salloc</span></code>, and <code class="docutils literal notranslate"><span class="pre">sbatch</span></code> parse
+the option; and</p></li>
+<li><p>compute nodes, where <code class="docutils literal notranslate"><span class="pre">slurmstepd</span></code> wraps the job task and launches vmocs.</p></li>
+</ul>
+<p>Keep the plugstack content consistent across those systems.  Restart
+<code class="docutils literal notranslate"><span class="pre">slurmd</span></code> on each compute node after enabling or replacing the plugin:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">systemctl</span> <span class="n">restart</span> <span class="n">slurmd</span>
+</pre></div>
+</div>
+</section>
+<section id="configure-plugin-arguments">
+<h2>Configure plugin arguments<a class="headerlink" href="#configure-plugin-arguments" title="Link to this heading"></a></h2>
+<p>Do not edit the packaged fragment because upgrades overwrite it.  Replace its
+<code class="docutils literal notranslate"><span class="pre">include</span></code> with a site-managed entry that uses the absolute installed path:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">optional</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">spank_vmocs</span><span class="o">.</span><span class="n">so</span> <span class="n">vmocs_path</span><span class="o">=/</span><span class="n">opt</span><span class="o">/</span><span class="n">vmocs</span> <span class="n">vmocs_conf</span><span class="o">=/</span><span class="n">etc</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">vmocs</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+<p>On Debian, the library path is normally
+<code class="docutils literal notranslate"><span class="pre">/usr/lib/&lt;multiarch-triplet&gt;/slurm/spank_vmocs.so</span></code>.  The two optional
+arguments are:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">vmocs_path=PREFIX</span></code></dt><dd><p>Run <code class="docutils literal notranslate"><span class="pre">PREFIX/bin/vmocs</span></code> instead of resolving <code class="docutils literal notranslate"><span class="pre">vmocs</span></code> from <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">vmocs_conf=PATH</span></code></dt><dd><p>Pass <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code> to every vmocs invocation.</p>
+</dd>
+</dl>
+<p>See <a class="reference internal" href="reference.html#slurm-plugin-arguments"><span class="std std-ref">Plugin arguments</span></a> for the exact reference.</p>
+</section>
+<section id="install-the-vmocs-configuration">
+<h2>Install the vmocs configuration<a class="headerlink" href="#install-the-vmocs-configuration" title="Link to this heading"></a></h2>
+<p>Place <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code> and <code class="docutils literal notranslate"><span class="pre">templates.yaml</span></code> on every compute node or use a
+shared path.  A typical system configuration is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">qemu</span><span class="o">-</span><span class="nb">bin</span><span class="p">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">qemu</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">x86_64</span>
+<span class="n">runtime</span><span class="o">-</span><span class="nb">dir</span><span class="p">:</span> <span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">vmocs</span>
+<span class="n">templates</span><span class="p">:</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
+</pre></div>
+</div>
+<p>The runtime directory must be node-local and writable by job users.  If it is
+under <code class="docutils literal notranslate"><span class="pre">/run</span></code>, recreate it at boot with a <code class="docutils literal notranslate"><span class="pre">tmpfiles.d</span></code> rule or an equivalent
+site mechanism.  Choose ownership and permissions that allow jobs to create
+their state while preventing users from modifying one another's directories.
+The image files and any template resources must be readable on every eligible
+compute node.  Publish templates with stable names because users pass the name
+through <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>.</p>
+</section>
+<section id="validate-the-deployment">
+<h2>Validate the deployment<a class="headerlink" href="#validate-the-deployment" title="Link to this heading"></a></h2>
+<p>From a login node, verify option registration:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">--</span><span class="n">help</span> <span class="o">|</span> <span class="n">grep</span> <span class="o">--</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span>
+</pre></div>
+</div>
+<p>Then run a single-task smoke test on a configured compute node:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">c2</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">4</span><span class="n">G</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">hostname</span>
+</pre></div>
+</div>
+<p>Confirm that the hostname is from the guest and the command returns.  Then
+check the selected compute node for leftover runtime state:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">w</span> <span class="n">COMPUTE_NODE</span> <span class="n">vmocs</span> <span class="nb">list</span>
+</pre></div>
+</div>
+</section>
+<section id="upgrade-compatibility">
+<h2>Upgrade compatibility<a class="headerlink" href="#upgrade-compatibility" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">spank_vmocs.so</span></code> records the <code class="docutils literal notranslate"><span class="pre">SLURM_VERSION_NUMBER</span></code> from the headers used
+to build it.  Slurm accepts micro releases within the same <code class="docutils literal notranslate"><span class="pre">X.YY</span></code> series but
+rejects the plugin across release series with an
+<code class="docutils literal notranslate"><span class="pre">Incompatible</span> <span class="pre">Slurm</span> <span class="pre">plugin</span> <span class="pre">version</span></code> message.</p>
+<p>For every Slurm <code class="docutils literal notranslate"><span class="pre">X.YY</span></code> upgrade:</p>
+<ol class="arabic simple">
+<li><p>Install the matching development headers.</p></li>
+<li><p>Rebuild the RPM, Debian package, or shared object.</p></li>
+<li><p>Deploy it to login/submission and compute nodes.</p></li>
+<li><p>Restart <code class="docutils literal notranslate"><span class="pre">slurmd</span></code> on the compute nodes.</p></li>
+<li><p>Repeat the option-registration and smoke tests.</p></li>
+</ol>
+<p>Keep the plugin package version in sync between <code class="docutils literal notranslate"><span class="pre">VMOCS_VER</span></code> in
+<code class="docutils literal notranslate"><span class="pre">plugins/slurm/Makefile</span></code> and the top entry of
+<code class="docutils literal notranslate"><span class="pre">plugins/slurm/debian/changelog</span></code> when making a release.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="user-guide.html" class="btn btn-neutral float-left" title="Slurm user guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="gpu-passthrough.html" class="btn btn-neutral float-right" title="GPU passthrough" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

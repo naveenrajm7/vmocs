@@ -39,10 +39,20 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1"><a class="reference internal" href="slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="internals/index.html">Internals</a></li>
 </ul>
 
         </div>
@@ -80,6 +90,13 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li>
+    --attach
+
+      <ul>
+        <li><a href="manpages/man1/run.html#cmdoption-attach">command line option</a>
+</li>
+      </ul></li>
+      <li>
     --config
 
       <ul>
@@ -90,7 +107,7 @@
     --cores
 
       <ul>
-        <li><a href="manpages/man1/launch.html#cmdoption-cores">command line option</a>, <a href="manpages/man1/snapshot.html#cmdoption-cores">[1]</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-cores">command line option</a>, <a href="manpages/man1/run.html#cmdoption-cores">[1]</a>, <a href="manpages/man1/snapshot.html#cmdoption-cores">[2]</a>
 </li>
       </ul></li>
       <li>
@@ -101,17 +118,24 @@
 </li>
       </ul></li>
       <li>
+    --if-exists
+
+      <ul>
+        <li><a href="manpages/man1/stop.html#cmdoption-if-exists">command line option</a>
+</li>
+      </ul></li>
+      <li>
     --job-id
 
       <ul>
-        <li><a href="manpages/man1/launch.html#cmdoption-job-id">command line option</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-job-id">command line option</a>, <a href="manpages/man1/run.html#cmdoption-job-id">[1]</a>
 </li>
       </ul></li>
       <li>
     --memory
 
       <ul>
-        <li><a href="manpages/man1/launch.html#cmdoption-memory">command line option</a>, <a href="manpages/man1/snapshot.html#cmdoption-memory">[1]</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-memory">command line option</a>, <a href="manpages/man1/run.html#cmdoption-memory">[1]</a>, <a href="manpages/man1/snapshot.html#cmdoption-memory">[2]</a>
 </li>
       </ul></li>
   </ul></td>
@@ -120,14 +144,14 @@
     --pci
 
       <ul>
-        <li><a href="manpages/man1/launch.html#cmdoption-pci">command line option</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-pci">command line option</a>, <a href="manpages/man1/run.html#cmdoption-pci">[1]</a>
 </li>
       </ul></li>
       <li>
     --save
 
       <ul>
-        <li><a href="manpages/man1/stop.html#cmdoption-save">command line option</a>
+        <li><a href="manpages/man1/run.html#cmdoption-save">command line option</a>, <a href="manpages/man1/stop.html#cmdoption-save">[1]</a>
 </li>
       </ul></li>
       <li>
@@ -144,6 +168,27 @@
         <li><a href="manpages/man1/vmocs.html#cmdoption-version">command line option</a>
 </li>
       </ul></li>
+      <li>
+    --vm-attach
+
+      <ul>
+        <li><a href="slurm/reference.html#cmdoption-vm-attach">command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --vm-image
+
+      <ul>
+        <li><a href="slurm/reference.html#cmdoption-vm-image">command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --vm-save
+
+      <ul>
+        <li><a href="slurm/reference.html#cmdoption-vm-save">command line option</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -154,23 +199,33 @@
     command line option
 
       <ul>
+        <li><a href="manpages/man1/run.html#cmdoption-attach">--attach</a>
+</li>
         <li><a href="manpages/man1/vmocs.html#cmdoption-config">--config</a>
 </li>
-        <li><a href="manpages/man1/launch.html#cmdoption-cores">--cores</a>, <a href="manpages/man1/snapshot.html#cmdoption-cores">[1]</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-cores">--cores</a>, <a href="manpages/man1/run.html#cmdoption-cores">[1]</a>, <a href="manpages/man1/snapshot.html#cmdoption-cores">[2]</a>
 </li>
         <li><a href="manpages/man1/launch.html#cmdoption-detach">--detach</a>
 </li>
-        <li><a href="manpages/man1/launch.html#cmdoption-job-id">--job-id</a>
+        <li><a href="manpages/man1/stop.html#cmdoption-if-exists">--if-exists</a>
 </li>
-        <li><a href="manpages/man1/launch.html#cmdoption-memory">--memory</a>, <a href="manpages/man1/snapshot.html#cmdoption-memory">[1]</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-job-id">--job-id</a>, <a href="manpages/man1/run.html#cmdoption-job-id">[1]</a>
 </li>
-        <li><a href="manpages/man1/launch.html#cmdoption-pci">--pci</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-memory">--memory</a>, <a href="manpages/man1/run.html#cmdoption-memory">[1]</a>, <a href="manpages/man1/snapshot.html#cmdoption-memory">[2]</a>
 </li>
-        <li><a href="manpages/man1/stop.html#cmdoption-save">--save</a>
+        <li><a href="manpages/man1/launch.html#cmdoption-pci">--pci</a>, <a href="manpages/man1/run.html#cmdoption-pci">[1]</a>
+</li>
+        <li><a href="manpages/man1/run.html#cmdoption-save">--save</a>, <a href="manpages/man1/stop.html#cmdoption-save">[1]</a>
 </li>
         <li><a href="manpages/man1/launch.html#cmdoption-ssh">--ssh</a>
 </li>
         <li><a href="manpages/man1/vmocs.html#cmdoption-version">--version</a>
+</li>
+        <li><a href="slurm/reference.html#cmdoption-vm-attach">--vm-attach</a>
+</li>
+        <li><a href="slurm/reference.html#cmdoption-vm-image">--vm-image</a>
+</li>
+        <li><a href="slurm/reference.html#cmdoption-vm-save">--vm-save</a>
 </li>
       </ul></li>
   </ul></td>

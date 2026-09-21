@@ -1,0 +1,238 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Using vmocs with Slurm &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Slurm user guide" href="user-guide.html" />
+    <link rel="prev" title="Using vmocs directly" href="../direct/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Using vmocs with Slurm</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choose-your-guide">Choose your guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="user-guide.html">Slurm user guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a></li>
+<li class="toctree-l3"><a class="reference internal" href="reference.html">Slurm plugin reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Using vmocs with Slurm</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="using-vmocs-with-slurm">
+<span id="slurm-plugin"></span><h1>Using vmocs with Slurm<a class="headerlink" href="#using-vmocs-with-slurm" title="Link to this heading"></a></h1>
+<p>The vmocs SPANK plugin adds VM options to Slurm.  A command such as</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>srun<span class="w"> </span>-n1<span class="w"> </span>--vm-image<span class="w"> </span>base-ubuntu<span class="w"> </span>hostname
+</pre></div>
+</div>
+<p>allocates a normal Slurm task, boots the selected VM inside that task's
+cgroup, runs <code class="docutils literal notranslate"><span class="pre">hostname</span></code> in the guest over SSH, and destroys the VM when the
+command finishes.  Slurm remains responsible for allocation, limits,
+accounting, signals, and wall time; vmocs manages the guest lifecycle.</p>
+<section id="quick-start-for-users">
+<h2>Quick start for users<a class="headerlink" href="#quick-start-for-users" title="Link to this heading"></a></h2>
+<p>The plugin and at least one template must already be installed by a cluster
+administrator.  Confirm that the options are available:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">--</span><span class="n">help</span> <span class="o">|</span> <span class="n">grep</span> <span class="o">--</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span>
+</pre></div>
+</div>
+<p>Open an interactive shell inside a VM:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">pty</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
+</pre></div>
+</div>
+<p>Run a single non-interactive command:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">uname</span> <span class="o">-</span><span class="n">a</span>
+</pre></div>
+</div>
+<p>Request CPU and memory as usual; the plugin maps the allocation into the
+guest:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">c4</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">8</span><span class="n">G</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">nproc</span>
+</pre></div>
+</div>
+<p>Seamless guest sessions currently require exactly one Slurm task.  See the
+<a class="reference internal" href="user-guide.html"><span class="doc">Slurm user guide</span></a> for allocations, batch jobs, saved images, and current
+limitations.</p>
+</section>
+<section id="choose-your-guide">
+<h2>Choose your guide<a class="headerlink" href="#choose-your-guide" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Cluster users</strong></dt><dd><p>Follow the <a class="reference internal" href="user-guide.html"><span class="doc">Slurm user guide</span></a> for <code class="docutils literal notranslate"><span class="pre">srun</span></code>, <code class="docutils literal notranslate"><span class="pre">salloc</span></code>, <code class="docutils literal notranslate"><span class="pre">sbatch</span></code>,
+interactive sessions, resources, and saving guest changes.</p>
+</dd>
+<dt><strong>Cluster administrators</strong></dt><dd><p>Follow the <a class="reference internal" href="admin-guide.html"><span class="doc">Cluster administrator guide</span></a> to build, install, configure, and upgrade the
+plugin.  GPU nodes also require the <a class="reference internal" href="gpu-passthrough.html"><span class="doc">GPU passthrough</span></a> setup.</p>
+</dd>
+<dt><strong>Operators and developers</strong></dt><dd><p>Use the <a class="reference internal" href="reference.html"><span class="doc">Slurm plugin reference</span></a> for exact options and resource mappings, the
+<a class="reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting the Slurm plugin</span></a> guide for common failures, and the
+<a class="reference internal" href="../internals/index.html"><span class="doc">Internals</span></a> section for implementation details.</p>
+</dd>
+</dl>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="user-guide.html">Slurm user guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#before-starting">Before starting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#run-an-interactive-session">Run an interactive session</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#run-a-non-interactive-command">Run a non-interactive command</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#request-resources">Request resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#use-an-existing-allocation">Use an existing allocation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#submit-a-batch-workflow">Submit a batch workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#save-changes-to-the-primary-disk">Save changes to the primary disk</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#use-unattached-mode">Use unattached mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#request-a-gpu">Request a GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user-guide.html#current-limitations">Current limitations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#build-a-package">Build a package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#install-without-a-package">Install without a package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#enable-the-plugin">Enable the plugin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#configure-plugin-arguments">Configure plugin arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#install-the-vmocs-configuration">Install the vmocs configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#validate-the-deployment">Validate the deployment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="admin-guide.html#upgrade-compatibility">Upgrade compatibility</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#enable-iommu-and-vfio">Enable IOMMU and VFIO</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#bind-physical-gpus-to-vfio-pci">Bind physical GPUs to vfio-pci</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#set-vfio-device-permissions">Set VFIO device permissions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#configure-slurm-gres">Configure Slurm GRES</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#configure-the-vm-template">Configure the VM template</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#validate-passthrough">Validate passthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gpu-passthrough.html#multi-function-and-acs-behavior">Multi-function and ACS behavior</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">Slurm plugin reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="reference.html#user-options">User options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reference.html#plugin-arguments">Plugin arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reference.html#resource-mapping">Resource mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reference.html#command-transformation">Command transformation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reference.html#lifecycle-hooks">Lifecycle hooks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#vm-image-is-unrecognized"><code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> is unrecognized</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#the-option-appears-but-the-vm-does-not-start">The option appears but the VM does not start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#seamless-guest-sessions-currently-require-ntasks-1"><code class="docutils literal notranslate"><span class="pre">seamless</span> <span class="pre">guest</span> <span class="pre">sessions</span> <span class="pre">currently</span> <span class="pre">require</span> <span class="pre">--ntasks=1</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#qemu-fails-before-ssh-is-ready">QEMU fails before SSH is ready</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#the-vm-times-out-waiting-for-ssh">The VM times out waiting for SSH</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#cpu-or-memory-does-not-match-the-request">CPU or memory does not match the request</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#the-allocated-gpu-is-missing-in-the-guest">The allocated GPU is missing in the guest</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#permission-denied-for-kvm-or-vfio">Permission denied for KVM or VFIO</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#qemu-reports-a-pci-irq-assertion-for-an-amd-gpu">QEMU reports a PCI IRQ assertion for an AMD GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#a-batch-script-is-not-found-inside-the-guest">A batch script is not found inside the guest</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#a-cancelled-job-leaves-runtime-state">A cancelled job leaves runtime state</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../direct/index.html" class="btn btn-neutral float-left" title="Using vmocs directly" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="user-guide.html" class="btn btn-neutral float-right" title="Slurm user guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

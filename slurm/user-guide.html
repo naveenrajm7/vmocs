@@ -1,0 +1,283 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slurm user guide &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Cluster administrator guide" href="admin-guide.html" />
+    <link rel="prev" title="Using vmocs with Slurm" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Using vmocs with Slurm</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#choose-your-guide">Choose your guide</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Slurm user guide</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#before-starting">Before starting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#run-an-interactive-session">Run an interactive session</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#run-a-non-interactive-command">Run a non-interactive command</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#request-resources">Request resources</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#use-an-existing-allocation">Use an existing allocation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#submit-a-batch-workflow">Submit a batch workflow</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#save-changes-to-the-primary-disk">Save changes to the primary disk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#use-unattached-mode">Use unattached mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#request-a-gpu">Request a GPU</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#current-limitations">Current limitations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a></li>
+<li class="toctree-l3"><a class="reference internal" href="reference.html">Slurm plugin reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Using vmocs with Slurm</a></li>
+      <li class="breadcrumb-item active">Slurm user guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/user-guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="slurm-user-guide">
+<span id="id1"></span><h1>Slurm user guide<a class="headerlink" href="#slurm-user-guide" title="Link to this heading"></a></h1>
+<p>The vmocs options are SPANK options, so they appear alongside Slurm's own
+options after the plugin has been installed.  <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> enables vmocs for
+a job step; Slurm commands without it behave normally.</p>
+<section id="before-starting">
+<h2>Before starting<a class="headerlink" href="#before-starting" title="Link to this heading"></a></h2>
+<p>Check that the plugin is available and find the templates published by your
+administrator:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">--</span><span class="n">help</span> <span class="o">|</span> <span class="n">grep</span> <span class="o">--</span> <span class="o">--</span><span class="n">vm</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="n">vmocs</span> <span class="n">template</span> <span class="nb">list</span>
+</pre></div>
+</div>
+<p>The second command runs the vmocs CLI on a compute node, so it does not require
+vmocs to be installed on the login node.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> is not recognized, see
+<a class="reference internal" href="troubleshooting.html#troubleshoot-unrecognized-option"><span class="std std-ref">--vm-image is unrecognized</span></a> or contact the cluster administrator.</p>
+</section>
+<section id="run-an-interactive-session">
+<h2>Run an interactive session<a class="headerlink" href="#run-an-interactive-session" title="Link to this heading"></a></h2>
+<p>Request one task and a pseudo-terminal, then run a login shell:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">pty</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
+</pre></div>
+</div>
+<p>There is one continuous terminal path from the local terminal, through Slurm
+and SSH, to the guest.  Logging out ends the guest command, shuts down the VM,
+and completes the Slurm step.</p>
+<p>Attached interactive sessions wait for SSH and reconnect after a guest reboot
+or temporary transport failure while QEMU is still running.  The reconnect
+timeout comes from the template's <code class="docutils literal notranslate"><span class="pre">ssh-timeout</span></code> setting.</p>
+</section>
+<section id="run-a-non-interactive-command">
+<h2>Run a non-interactive command<a class="headerlink" href="#run-a-non-interactive-command" title="Link to this heading"></a></h2>
+<p>Place the guest command after the Slurm and vmocs options:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">hostname</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">bash</span> <span class="o">-</span><span class="n">lc</span> <span class="s1">&#39;cat /etc/os-release&#39;</span>
+</pre></div>
+</div>
+<p>Argument boundaries are preserved when vmocs forwards the command through
+SSH.  The guest command's exit status becomes the <code class="docutils literal notranslate"><span class="pre">srun</span></code> exit status.
+Unlike interactive sessions, a non-interactive command is not replayed after
+an SSH transport failure.</p>
+</section>
+<section id="request-resources">
+<h2>Request resources<a class="headerlink" href="#request-resources" title="Link to this heading"></a></h2>
+<p>Request resources with normal Slurm options:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">c4</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">8</span><span class="n">G</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="n">bash</span> <span class="o">-</span><span class="n">lc</span> <span class="s1">&#39;nproc; free -m&#39;</span>
+</pre></div>
+</div>
+<p>The guest receives four vCPUs.  Its configured memory is slightly smaller
+than the allocation because the plugin reserves host memory for QEMU.  See
+<a class="reference internal" href="reference.html#slurm-resource-mapping"><span class="std std-ref">Resource mapping</span></a> for the exact mapping.</p>
+</section>
+<section id="use-an-existing-allocation">
+<h2>Use an existing allocation<a class="headerlink" href="#use-an-existing-allocation" title="Link to this heading"></a></h2>
+<p>Acquire an allocation first, then start the VM as a step inside it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">salloc</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="o">-</span><span class="n">c4</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">8</span><span class="n">G</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">pty</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
+</pre></div>
+</div>
+<p>Place <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> on the <code class="docutils literal notranslate"><span class="pre">srun</span></code> step that should execute in the guest.
+This keeps it clear which step owns the VM and also allows ordinary host steps
+in the same allocation.</p>
+</section>
+<section id="submit-a-batch-workflow">
+<h2>Submit a batch workflow<a class="headerlink" href="#submit-a-batch-workflow" title="Link to this heading"></a></h2>
+<p>The reliable batch pattern is a normal host-side batch script that launches
+an explicit vmocs <code class="docutils literal notranslate"><span class="pre">srun</span></code> step.  Put the guest workload on storage visible at
+the same path inside the VM, for example through a template mount point:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1">#SBATCH --job-name=vmocs-example</span>
+<span class="c1">#SBATCH --ntasks=1</span>
+<span class="c1">#SBATCH --cpus-per-task=4</span>
+<span class="c1">#SBATCH --mem=8G</span>
+<span class="c1">#SBATCH --output=vmocs-%j.out</span>
+
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">jobs</span><span class="o">/</span><span class="n">train</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">epochs</span> <span class="mi">10</span>
+</pre></div>
+</div>
+<p>Then submit it normally:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sbatch</span> <span class="n">submit</span><span class="o">.</span><span class="n">sh</span>
+</pre></div>
+</div>
+<p>Putting <code class="docutils literal notranslate"><span class="pre">#SBATCH</span> <span class="pre">--vm-image=...</span></code> directly in the batch script asks vmocs to
+wrap Slurm's private spool copy of that script.  The private host path is not
+normally present inside the guest, so direct wrapping works only when the
+script and every required path are deliberately made visible in the guest at
+the same locations.  Automatic batch-script staging is not currently
+implemented.</p>
+</section>
+<section id="save-changes-to-the-primary-disk">
+<h2>Save changes to the primary disk<a class="headerlink" href="#save-changes-to-the-primary-disk" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> to flatten the primary disk overlay after the guest command
+ends:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">pty</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">modified</span><span class="o">.</span><span class="n">qcow2</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
+</pre></div>
+</div>
+<p>The destination is a host path on the compute node and must be writable by the
+job user.  The resulting qcow2 file is standalone and can be used as the
+<code class="docutils literal notranslate"><span class="pre">image</span></code> of another template.  Saving does not modify the original image.</p>
+<p>Only the primary OS disk is saved.  Template <code class="docutils literal notranslate"><span class="pre">extra-disks</span></code> are attached
+directly, so their writes are already persistent and are not copied into the
+saved image.</p>
+</section>
+<section id="use-unattached-mode">
+<h2>Use unattached mode<a class="headerlink" href="#use-unattached-mode" title="Link to this heading"></a></h2>
+<p>The default <code class="docutils literal notranslate"><span class="pre">--vm-attach=auto</span></code> mode runs the Slurm command in the guest.
+For debugging or an externally managed session, keep the VM as the job but do
+not open SSH automatically:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">attach</span><span class="o">=</span><span class="n">none</span> <span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">true</span>
+</pre></div>
+</div>
+<p>vmocs prints the SSH connection details and waits for QEMU.  The trailing
+Slurm command is not executed in this mode.  The job ends when the guest
+exits, the allocation reaches its time limit, or the job is cancelled.</p>
+</section>
+<section id="request-a-gpu">
+<h2>Request a GPU<a class="headerlink" href="#request-a-gpu" title="Link to this heading"></a></h2>
+<p>On a node configured for vmocs GPU passthrough, request a GPU normally:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">gres</span><span class="o">=</span><span class="n">gpu</span><span class="p">:</span><span class="mi">1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">gpu</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">rocm</span><span class="o">-</span><span class="n">smi</span>
+</pre></div>
+</div>
+<p>The plugin discovers only the VFIO device groups Slurm has granted to the job
+and passes their PCI functions into the VM.  No vmocs GPU option is required.
+GPU availability, driver installation inside the image, and supported GRES
+names are cluster-specific; see <a class="reference internal" href="gpu-passthrough.html"><span class="doc">GPU passthrough</span></a> for the administrator
+setup.</p>
+</section>
+<section id="current-limitations">
+<h2>Current limitations<a class="headerlink" href="#current-limitations" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>A vmocs step must contain exactly one Slurm task (<code class="docutils literal notranslate"><span class="pre">--ntasks=1</span></code>).</p></li>
+<li><p>Host environment variables are not generally copied into the guest.</p></li>
+<li><p>Host paths and the submission working directory are available only when the
+template deliberately shares or otherwise provides them.</p></li>
+<li><p>Direct wrapping of Slurm's private batch-spool script requires matching
+guest-visible paths; explicit <code class="docutils literal notranslate"><span class="pre">srun</span></code> from a host batch script is preferred.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Using vmocs with Slurm" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="admin-guide.html" class="btn btn-neutral float-right" title="Cluster administrator guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -42,11 +42,18 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="../../cli.html">Command-Line Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="vmocs.html">vmocs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="launch.html">vmocs launch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="run.html">vmocs run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="list.html">vmocs list</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">vmocs stop</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a></li>
@@ -61,6 +68,10 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../internals/index.html">Internals</a></li>
 </ul>
 
         </div>
@@ -92,7 +103,7 @@
 <span id="vmocs-stop-1"></span><h1>vmocs stop<a class="headerlink" href="#vmocs-stop" title="Link to this heading"></a></h1>
 <section id="synopsis">
 <h2>Synopsis<a class="headerlink" href="#synopsis" title="Link to this heading"></a></h2>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>vmocs stop [--save PATH] JOB_ID
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>vmocs stop [--save PATH] [--if-exists] JOB_ID
 </pre></div>
 </div>
 </section>
@@ -110,6 +121,13 @@ via QMP and cleans up the runtime directory.</p>
 inside the guest) into a new standalone <code class="docutils literal notranslate"><span class="pre">qcow2</span></code> image at <em>PATH</em>.  The
 resulting image can be used directly as a template <code class="docutils literal notranslate"><span class="pre">image:</span></code> for future
 jobs — equivalent to a &quot;save disk&quot; operation.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-if-exists">
+<span class="sig-name descname"><span class="pre">--if-exists</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-if-exists" title="Link to this definition"></a></dt>
+<dd><p>Exit successfully without output when the VM runtime metadata is already
+gone.  The Slurm plugin uses this for best-effort cleanup.</p>
 </dd></dl>
 
 </section>

@@ -1,0 +1,298 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPU passthrough &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Slurm plugin reference" href="reference.html" />
+    <link rel="prev" title="Cluster administrator guide" href="admin-guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Using vmocs with Slurm</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#choose-your-guide">Choose your guide</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="user-guide.html">Slurm user guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">GPU passthrough</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#enable-iommu-and-vfio">Enable IOMMU and VFIO</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#bind-physical-gpus-to-vfio-pci">Bind physical GPUs to vfio-pci</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#set-vfio-device-permissions">Set VFIO device permissions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#configure-slurm-gres">Configure Slurm GRES</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#configure-the-vm-template">Configure the VM template</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#validate-passthrough">Validate passthrough</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#multi-function-and-acs-behavior">Multi-function and ACS behavior</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="reference.html">Slurm plugin reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="troubleshooting.html">Troubleshooting the Slurm plugin</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Using vmocs with Slurm</a></li>
+      <li class="breadcrumb-item active">GPU passthrough</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/gpu-passthrough.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gpu-passthrough">
+<span id="slurm-gpu-passthrough"></span><h1>GPU passthrough<a class="headerlink" href="#gpu-passthrough" title="Link to this heading"></a></h1>
+<p>The plugin maps GPUs allocated as Slurm generic resources (GRES) into the VM
+through VFIO.  Users request <code class="docutils literal notranslate"><span class="pre">--gres=gpu:1</span></code>; they do not select a host PCI
+address themselves.</p>
+<p>Two node configurations are supported:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Configuration</p></th>
+<th class="head"><p>Behavior</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Bare VFIO</p></td>
+<td><p>A physical GPU function (PF) is bound to <code class="docutils literal notranslate"><span class="pre">vfio-pci</span></code> and
+allocated exclusively to one job.</p></td>
+</tr>
+<tr class="row-odd"><td><p>GIM SR-IOV</p></td>
+<td><p>The AMD GIM driver creates virtual functions (VFs), with one
+VF allocated to each job.</p></td>
+</tr>
+</tbody>
+</table>
+<p>In either case, Slurm grants the job access to a <code class="docutils literal notranslate"><span class="pre">/dev/vfio/&lt;group&gt;</span></code> device.
+The plugin probes the numeric VFIO group devices, keeps only the groups the
+job can open, resolves every PCI function in those IOMMU groups, and supplies
+the resulting BDFs to <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span> <span class="pre">--pci</span></code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>VFIO configuration changes device ownership at the host level.  Prepare a
+maintenance and recovery path before rebinding production GPUs.  A physical
+GPU bound to <code class="docutils literal notranslate"><span class="pre">vfio-pci</span></code> is not available to its normal host driver.</p>
+</div>
+<section id="enable-iommu-and-vfio">
+<h2>Enable IOMMU and VFIO<a class="headerlink" href="#enable-iommu-and-vfio" title="Link to this heading"></a></h2>
+<p>Enable IOMMU support in system firmware and on the kernel command line.  A
+typical AMD configuration is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">amd_iommu</span><span class="o">=</span><span class="n">on</span> <span class="n">iommu</span><span class="o">=</span><span class="n">pt</span>
+</pre></div>
+</div>
+<p>For Intel hosts, use <code class="docutils literal notranslate"><span class="pre">intel_iommu=on</span> <span class="pre">iommu=pt</span></code>.  Load the appropriate KVM
+module together with <code class="docutils literal notranslate"><span class="pre">vfio</span></code>, <code class="docutils literal notranslate"><span class="pre">vfio_pci</span></code>, and <code class="docutils literal notranslate"><span class="pre">vfio_iommu_type1</span></code>.  Verify
+that the node exposes <code class="docutils literal notranslate"><span class="pre">/dev/kvm</span></code> and <code class="docutils literal notranslate"><span class="pre">/dev/vfio/vfio</span></code> before continuing.</p>
+</section>
+<section id="bind-physical-gpus-to-vfio-pci">
+<h2>Bind physical GPUs to vfio-pci<a class="headerlink" href="#bind-physical-gpus-to-vfio-pci" title="Link to this heading"></a></h2>
+<p>This step applies to bare VFIO nodes.  GIM manages VF creation and binding on
+SR-IOV nodes, so follow the GIM deployment procedure instead.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">driverctl</span></code> for persistent binding across reboots.  First list the GPU
+and any companion functions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">lspci</span> <span class="o">-</span><span class="n">d</span> <span class="mi">1002</span><span class="p">:</span> <span class="o">-</span><span class="n">D</span> <span class="o">|</span> <span class="n">grep</span> <span class="o">-</span><span class="n">E</span> <span class="s1">&#39;VGA|Processing|Display|Audio&#39;</span>
+</pre></div>
+</div>
+<p>Bind every function that belongs to the passthrough IOMMU group:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">driverctl</span> <span class="nb">set</span><span class="o">-</span><span class="n">override</span> <span class="mi">0000</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mf">00.0</span> <span class="n">vfio</span><span class="o">-</span><span class="n">pci</span>
+<span class="n">sudo</span> <span class="n">driverctl</span> <span class="nb">set</span><span class="o">-</span><span class="n">override</span> <span class="mi">0000</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mf">00.1</span> <span class="n">vfio</span><span class="o">-</span><span class="n">pci</span>
+</pre></div>
+</div>
+<p>Verify the result:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">lspci</span> <span class="o">-</span><span class="n">ks</span> <span class="mi">0000</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mf">00.0</span> <span class="o">|</span> <span class="n">grep</span> <span class="s1">&#39;Kernel driver&#39;</span>
+</pre></div>
+</div>
+<p>The expected driver is <code class="docutils literal notranslate"><span class="pre">vfio-pci</span></code>.  Inspect
+<code class="docutils literal notranslate"><span class="pre">/sys/kernel/iommu_groups/&lt;N&gt;/devices</span></code> and do not pass a group containing a
+host device that cannot safely be dedicated to the guest.</p>
+</section>
+<section id="set-vfio-device-permissions">
+<h2>Set VFIO device permissions<a class="headerlink" href="#set-vfio-device-permissions" title="Link to this heading"></a></h2>
+<p>The job user must pass the normal file permission check before Slurm's device
+cgroup can enforce the per-job allocation.  Create a udev rule for the numeric
+VFIO group nodes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">SUBSYSTEM</span><span class="o">==</span><span class="s2">&quot;vfio&quot;</span><span class="p">,</span> <span class="n">KERNEL</span><span class="o">!=</span><span class="s2">&quot;vfio&quot;</span><span class="p">,</span> <span class="n">GROUP</span><span class="o">=</span><span class="s2">&quot;kvm&quot;</span><span class="p">,</span> <span class="n">MODE</span><span class="o">=</span><span class="s2">&quot;0660&quot;</span>
+</pre></div>
+</div>
+<p>Save it as <code class="docutils literal notranslate"><span class="pre">/etc/udev/rules.d/99-vfio-kvm.rules</span></code>, then reload udev:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">udevadm</span> <span class="n">control</span> <span class="o">--</span><span class="n">reload</span>
+<span class="n">sudo</span> <span class="n">udevadm</span> <span class="n">trigger</span> <span class="o">--</span><span class="n">subsystem</span><span class="o">-</span><span class="n">match</span><span class="o">=</span><span class="n">vfio</span>
+</pre></div>
+</div>
+<p>Add permitted job users to the <code class="docutils literal notranslate"><span class="pre">kvm</span></code> group.  New membership takes effect in
+a new login session:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">usermod</span> <span class="o">-</span><span class="n">aG</span> <span class="n">kvm</span> <span class="n">USERNAME</span>
+</pre></div>
+</div>
+</section>
+<section id="configure-slurm-gres">
+<h2>Configure Slurm GRES<a class="headerlink" href="#configure-slurm-gres" title="Link to this heading"></a></h2>
+<p>After the devices are bound, generate the GRES <code class="docutils literal notranslate"><span class="pre">File=</span></code> list on each compute
+node:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python3</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">gres</span><span class="o">-</span><span class="n">conf</span><span class="o">-</span><span class="n">gen</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">check</span>
+<span class="n">python3</span> <span class="n">plugins</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">gres</span><span class="o">-</span><span class="n">conf</span><span class="o">-</span><span class="n">gen</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>The check form prints the BDF, IOMMU group, and VFIO device mapping.  The
+normal form emits a line similar to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Name</span><span class="o">=</span><span class="n">gpu</span> <span class="n">File</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">vfio</span><span class="o">/</span><span class="mi">61</span><span class="p">,</span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">vfio</span><span class="o">/</span><span class="mi">62</span>
+</pre></div>
+</div>
+<p>Put the generated line in <code class="docutils literal notranslate"><span class="pre">/etc/slurm/gres.conf</span></code>.  Use node-specific entries
+or configuration management when mappings differ between nodes.</p>
+<p>The corresponding node declaration must advertise an untyped GPU count that
+matches this GRES definition:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">NodeName</span><span class="o">=</span><span class="n">gpu</span><span class="o">-</span><span class="n">node01</span> <span class="o">...</span> <span class="n">Gres</span><span class="o">=</span><span class="n">gpu</span><span class="p">:</span><span class="mi">2</span>
+</pre></div>
+</div>
+<p>Do not declare a typed GPU such as <code class="docutils literal notranslate"><span class="pre">gpu:gfx906:2</span></code> while using an untyped
+<code class="docutils literal notranslate"><span class="pre">Name=gpu</span></code> line.  Enable Slurm device constraints so that only the VFIO group
+files assigned to a job can be opened from its cgroup.</p>
+<p>Restart the daemons after changing GRES configuration:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">systemctl</span> <span class="n">restart</span> <span class="n">slurmctld</span> <span class="n">slurmd</span>
+<span class="n">sudo</span> <span class="n">scontrol</span> <span class="n">update</span> <span class="n">NodeName</span><span class="o">=</span><span class="n">gpu</span><span class="o">-</span><span class="n">node01</span> <span class="n">State</span><span class="o">=</span><span class="n">resume</span>
+</pre></div>
+</div>
+</section>
+<section id="configure-the-vm-template">
+<h2>Configure the VM template<a class="headerlink" href="#configure-the-vm-template" title="Link to this heading"></a></h2>
+<p>Templates used for AMD GPU passthrough must enable a dedicated PCIe root port
+for every passed device:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">gpu</span><span class="o">-</span><span class="n">ubuntu</span><span class="p">:</span>
+  <span class="n">image</span><span class="p">:</span> <span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">gpu</span><span class="o">.</span><span class="n">qcow2</span>
+  <span class="n">machine</span><span class="o">-</span><span class="nb">type</span><span class="p">:</span> <span class="n">q35</span>
+  <span class="n">pci</span><span class="o">-</span><span class="n">root</span><span class="o">-</span><span class="n">port</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">ssh</span><span class="o">-</span><span class="n">user</span><span class="p">:</span> <span class="n">ubuntu</span>
+</pre></div>
+</div>
+<p>Without <code class="docutils literal notranslate"><span class="pre">pci-root-port:</span> <span class="pre">true</span></code>, Q35 guests with AMD GPUs can fail with a QEMU
+PCI interrupt assertion.  The guest image must contain a driver compatible
+with the assigned physical GPU or VF.</p>
+</section>
+<section id="validate-passthrough">
+<h2>Validate passthrough<a class="headerlink" href="#validate-passthrough" title="Link to this heading"></a></h2>
+<p>Request one GPU and inspect it inside the guest:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">gres</span><span class="o">=</span><span class="n">gpu</span><span class="p">:</span><span class="mi">1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">gpu</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">lspci</span> <span class="o">-</span><span class="n">nn</span>
+</pre></div>
+</div>
+<p>For an AMD compute image, use a guest tool such as <code class="docutils literal notranslate"><span class="pre">rocm-smi</span></code> for a
+functional test:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">N1</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">gres</span><span class="o">=</span><span class="n">gpu</span><span class="p">:</span><span class="mi">1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">gpu</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">rocm</span><span class="o">-</span><span class="n">smi</span>
+</pre></div>
+</div>
+<p>Also verify that two concurrent jobs cannot receive the same VFIO device and
+that jobs without a GPU allocation cannot open the numeric VFIO group devices.</p>
+</section>
+<section id="multi-function-and-acs-behavior">
+<h2>Multi-function and ACS behavior<a class="headerlink" href="#multi-function-and-acs-behavior" title="Link to this heading"></a></h2>
+<p>Consumer GPUs often expose a display function and an HDMI/DisplayPort audio
+function.</p>
+<ul class="simple">
+<li><p>With ACS disabled, both functions may share one IOMMU group.  One
+<code class="docutils literal notranslate"><span class="pre">/dev/vfio/&lt;group&gt;</span></code> GRES entry covers the group, and vmocs passes every
+function in that group to the VM.</p></li>
+<li><p>With ACS enabled, the functions may have separate groups.  The generator
+selects groups containing a display-class device and excludes an
+audio-only group.  Add a separate GRES deliberately if a guest also needs
+the isolated audio function.</p></li>
+</ul>
+<p>The generator always includes GIM virtual functions because a VF has a
+<code class="docutils literal notranslate"><span class="pre">physfn</span></code> relationship and normally represents a single GPU function.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="admin-guide.html" class="btn btn-neutral float-left" title="Cluster administrator guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="reference.html" class="btn btn-neutral float-right" title="Slurm plugin reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>vmocs &mdash; vmocs 0.1.0 documentation</title>
+  <title>vmocs documentation &mdash; vmocs 0.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -19,7 +19,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Command-Line Reference" href="cli.html" /> 
+    <link rel="next" title="Getting started" href="getting-started.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -41,10 +41,20 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1"><a class="reference internal" href="slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="internals/index.html">Internals</a></li>
 </ul>
 
         </div>
@@ -61,7 +71,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">vmocs</li>
+      <li class="breadcrumb-item active">vmocs documentation</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -71,17 +81,53 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="vmocs">
-<h1>vmocs<a class="headerlink" href="#vmocs" title="Link to this heading"></a></h1>
-<p><strong>vmocs</strong> — Virtual Machine in Compute via SLURM.
-A lightweight QEMU/KVM wrapper for launching and managing virtual machines
-inside SLURM jobs.</p>
+  <section id="vmocs-documentation">
+<h1>vmocs documentation<a class="headerlink" href="#vmocs-documentation" title="Link to this heading"></a></h1>
+<p><strong>vmocs</strong> (Virtual Machine On Compute through Slurm) launches QEMU/KVM
+virtual machines directly or as Slurm jobs.  It combines a standalone command
+line interface with a Slurm SPANK plugin so that the VM remains inside the
+job's resource limits and lifecycle.</p>
+<p>Choose the path that matches what you need:</p>
+<ul class="simple">
+<li><p>Start with <a class="reference internal" href="getting-started.html"><span class="doc">Getting started</span></a> to install vmocs and launch a first VM.</p></li>
+<li><p>Use <a class="reference internal" href="direct/index.html"><span class="doc">Using vmocs directly</span></a> to manage VMs without a scheduler.</p></li>
+<li><p>Use <a class="reference internal" href="slurm/index.html"><span class="doc">Using vmocs with Slurm</span></a> to run commands inside VMs allocated by Slurm.</p></li>
+<li><p>Use the reference pages when you need the exact command or configuration
+syntax.</p></li>
+</ul>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#install-vmocs">Install vmocs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#configure-vmocs">Configure vmocs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#launch-the-first-vm">Launch the first VM</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#next-steps">Next steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="direct/index.html">Using vmocs directly</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="direct/index.html#inspect-templates">Inspect templates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="direct/index.html#choose-a-launch-mode">Choose a launch mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="direct/index.html#save-disk-changes">Save disk changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="direct/index.html#create-a-fast-start-snapshot">Create a fast-start snapshot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="direct/index.html#command-reference">Command reference</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="slurm/index.html">Using vmocs with Slurm</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="slurm/index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2"><a class="reference internal" href="slurm/index.html#choose-your-guide">Choose your guide</a></li>
+</ul>
+</li>
+</ul>
+</div>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="manpages/man1/vmocs.html">vmocs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="manpages/man1/launch.html">vmocs launch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="manpages/man1/run.html">vmocs run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="manpages/man1/list.html">vmocs list</a></li>
 <li class="toctree-l2"><a class="reference internal" href="manpages/man1/stop.html">vmocs stop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="manpages/man1/template.html">vmocs template</a></li>
@@ -95,13 +141,24 @@ inside SLURM jobs.</p>
 </li>
 </ul>
 </div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="internals/index.html">Internals</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="internals/slurm-architecture.html">Slurm integration architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals/lifecycle.html">Lifecycle and cleanup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals/design-decisions.html">Design decisions</a></li>
+</ul>
+</li>
+</ul>
+</div>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="cli.html" class="btn btn-neutral float-right" title="Command-Line Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="getting-started.html" class="btn btn-neutral float-right" title="Getting started" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -1,0 +1,199 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Using vmocs directly &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Using vmocs with Slurm" href="../slurm/index.html" />
+    <link rel="prev" title="Getting started" href="../getting-started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Using vmocs directly</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#inspect-templates">Inspect templates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choose-a-launch-mode">Choose a launch mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#save-disk-changes">Save disk changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#create-a-fast-start-snapshot">Create a fast-start snapshot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#command-reference">Command reference</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Using vmocs directly</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/direct/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="using-vmocs-directly">
+<span id="direct-use"></span><h1>Using vmocs directly<a class="headerlink" href="#using-vmocs-directly" title="Link to this heading"></a></h1>
+<p>The standalone CLI is useful for preparing images, validating templates, and
+running a VM without Slurm.  It uses the same configuration and lifecycle code
+as the Slurm plugin.</p>
+<section id="inspect-templates">
+<h2>Inspect templates<a class="headerlink" href="#inspect-templates" title="Link to this heading"></a></h2>
+<p>List the available templates or inspect the fully resolved settings of one
+template:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">template</span> <span class="nb">list</span>
+<span class="n">vmocs</span> <span class="n">template</span> <span class="n">show</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+</pre></div>
+</div>
+<p>User templates from <code class="docutils literal notranslate"><span class="pre">~/.vmocs/templates.yaml</span></code> are merged with the system
+templates.  Template names must be unique across both files.</p>
+</section>
+<section id="choose-a-launch-mode">
+<h2>Choose a launch mode<a class="headerlink" href="#choose-a-launch-mode" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">launch</span></code> when you want to manage or enter a VM manually:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">cores</span> <span class="mi">4</span> <span class="o">--</span><span class="n">memory</span> <span class="mi">8192</span> <span class="o">--</span><span class="n">ssh</span>
+</pre></div>
+</div>
+<p>Without <code class="docutils literal notranslate"><span class="pre">--ssh</span></code>, vmocs prints an SSH command and waits for the VM to exit.
+Use <code class="docutils literal notranslate"><span class="pre">--detach</span></code> to return immediately and manage the VM with <code class="docutils literal notranslate"><span class="pre">list</span></code> and
+<code class="docutils literal notranslate"><span class="pre">stop</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">detach</span>
+<span class="n">vmocs</span> <span class="nb">list</span>
+<span class="n">vmocs</span> <span class="n">stop</span> <span class="mi">12345</span>
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">run</span></code> when a command should execute inside the guest and the VM should
+be cleaned up when that command finishes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span> <span class="n">uname</span> <span class="o">-</span><span class="n">a</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">run</span></code> is also the supervisor used by the Slurm plugin.  It forwards a
+terminal for interactive input, returns the guest command's exit status, and
+shuts the VM down after the session.</p>
+</section>
+<section id="save-disk-changes">
+<h2>Save disk changes<a class="headerlink" href="#save-disk-changes" title="Link to this heading"></a></h2>
+<p>The primary guest disk normally uses a disposable copy-on-write overlay.  To
+flatten a detached VM's modified overlay into a standalone qcow2 image:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">stop</span> <span class="mi">12345</span> <span class="o">--</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">modified</span><span class="o">.</span><span class="n">qcow2</span>
+</pre></div>
+</div>
+<p>For an attached command, save when the command finishes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">modified</span><span class="o">.</span><span class="n">qcow2</span> <span class="o">--</span> <span class="n">bash</span>
+</pre></div>
+</div>
+<p>Only the primary OS disk is included.  Files configured through the
+<code class="docutils literal notranslate"><span class="pre">extra-disks</span></code> template field are attached directly and retain their own
+changes independently.</p>
+</section>
+<section id="create-a-fast-start-snapshot">
+<h2>Create a fast-start snapshot<a class="headerlink" href="#create-a-fast-start-snapshot" title="Link to this heading"></a></h2>
+<p>Create a combined memory and disk snapshot:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">snapshot</span> <span class="n">create</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">snapshots</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">ready</span>
+</pre></div>
+</div>
+<p>Then reference it from a template:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ubuntu</span><span class="o">-</span><span class="n">ready</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+  <span class="n">snapshot</span><span class="p">:</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">snapshots</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">ready</span>
+</pre></div>
+</div>
+<p>The next launch restores the saved machine state instead of performing a full
+guest boot.</p>
+</section>
+<section id="command-reference">
+<h2>Command reference<a class="headerlink" href="#command-reference" title="Link to this heading"></a></h2>
+<p>See <a class="reference internal" href="../cli.html"><span class="doc">Command-Line Reference</span></a> for exact command syntax and <a class="reference internal" href="../conf.html"><span class="doc">Configuration Reference</span></a> for all
+configuration fields.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../getting-started.html" class="btn btn-neutral float-left" title="Getting started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../slurm/index.html" class="btn btn-neutral float-right" title="Using vmocs with Slurm" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

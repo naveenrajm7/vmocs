@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>vmocs launch &mdash; vmocs 0.1.0 documentation</title>
+  <title>vmocs run &mdash; vmocs 0.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
 
@@ -19,8 +19,8 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="vmocs run" href="run.html" />
-    <link rel="prev" title="vmocs" href="vmocs.html" /> 
+    <link rel="next" title="vmocs list" href="list.html" />
+    <link rel="prev" title="vmocs launch" href="launch.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,16 +52,15 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="../../cli.html">Command-Line Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="vmocs.html">vmocs</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">vmocs launch</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="launch.html">vmocs launch</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">vmocs run</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#description">Description</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#options">Options</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#shutdown-behaviour">Shutdown Behaviour</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#examples">Examples</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="run.html">vmocs run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="list.html">vmocs list</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stop.html">vmocs stop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="template.html">vmocs template</a></li>
@@ -90,9 +89,9 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../../cli.html">Command-Line Reference</a></li>
-      <li class="breadcrumb-item active">vmocs launch</li>
+      <li class="breadcrumb-item active">vmocs run</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/manpages/man1/launch.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/manpages/man1/run.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -100,23 +99,24 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="vmocs-launch">
-<span id="vmocs-launch-1"></span><h1>vmocs launch<a class="headerlink" href="#vmocs-launch" title="Link to this heading"></a></h1>
+  <section id="vmocs-run">
+<span id="vmocs-run-1"></span><h1>vmocs run<a class="headerlink" href="#vmocs-run" title="Link to this heading"></a></h1>
 <section id="synopsis">
 <h2>Synopsis<a class="headerlink" href="#synopsis" title="Link to this heading"></a></h2>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>vmocs launch [OPTIONS] TEMPLATE_NAME
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>vmocs run [OPTIONS] TEMPLATE_NAME [--] [COMMAND]...
 </pre></div>
 </div>
 </section>
 <section id="description">
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h2>
-<p>Launch a VM from <em>TEMPLATE_NAME</em>.  The template is resolved from
-<code class="docutils literal notranslate"><span class="pre">templates.yaml</span></code> (with inheritance), then QEMU is started with the
-appropriate options.</p>
-<p>After the VM is ready, vmocs prints the SSH connection string and — by default
-— <strong>blocks</strong> until QEMU exits.  Blocking is required for correct SLURM job
-containment: when SLURM sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code> to the job step, vmocs intercepts it
-and performs a graceful shutdown sequence before exiting.</p>
+<p>Launch <em>TEMPLATE_NAME</em> and, by default, execute <em>COMMAND</em> inside the guest over
+SSH.  vmocs acts as the supervisor for the entire session: it starts QEMU,
+forwards standard input and output, returns the guest command's exit status,
+then shuts the VM down and removes its runtime directory.</p>
+<p>When standard input is a terminal, vmocs requests a guest pseudo-terminal.
+Interactive sessions can reconnect after a guest reboot or a temporary SSH
+transport loss.  Non-interactive commands are not replayed after a transport
+failure.</p>
 </section>
 <section id="options">
 <h2>Options<a class="headerlink" href="#options" title="Link to this heading"></a></h2>
@@ -129,72 +129,57 @@ and performs a graceful shutdown sequence before exiting.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-memory">
 <span class="sig-name descname"><span class="pre">--memory</span></span><span class="sig-prename descclassname"> <span class="pre">MB</span></span><a class="headerlink" href="#cmdoption-memory" title="Link to this definition"></a></dt>
-<dd><p>RAM in megabytes.  Default: <code class="docutils literal notranslate"><span class="pre">2048</span></code>.</p>
+<dd><p>Guest RAM in megabytes.  Default: <code class="docutils literal notranslate"><span class="pre">2048</span></code>.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-job-id">
 <span class="sig-name descname"><span class="pre">--job-id</span></span><span class="sig-prename descclassname"> <span class="pre">N</span></span><a class="headerlink" href="#cmdoption-job-id" title="Link to this definition"></a></dt>
-<dd><p>Job identifier used to name the runtime directory and look up the VM with
-<code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">stop</span></code>.  Defaults to the current process PID.</p>
+<dd><p>Identifier used for the runtime directory.  Defaults to the vmocs process
+ID.  The Slurm plugin supplies the Slurm job ID.</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-pci">
 <span class="sig-name descname"><span class="pre">--pci</span></span><span class="sig-prename descclassname"> <span class="pre">BDF</span></span><a class="headerlink" href="#cmdoption-pci" title="Link to this definition"></a></dt>
-<dd><p>Pass through a host PCI device to the VM.  <em>BDF</em> is the PCI bus–device–
-function address in the form <code class="docutils literal notranslate"><span class="pre">DDDD:BB:DD.F</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">0000:03:00.0</span></code>).
-Repeat the flag to pass through multiple devices.</p>
+<dd><p>Pass a host PCI device through to the guest.  Repeat for multiple devices.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-detach">
-<span class="sig-name descname"><span class="pre">--detach</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-detach" title="Link to this definition"></a></dt>
-<dd><p>Return immediately after the VM is ready.  QEMU continues running in the
-background.  <strong>Do not use inside a blocking SLURM job step</strong> — the job
-will exit while the VM is still running.</p>
+<dt class="sig sig-object std" id="cmdoption-attach">
+<span class="sig-name descname"><span class="pre">--attach</span></span><span class="sig-prename descclassname"> <span class="pre">MODE</span></span><a class="headerlink" href="#cmdoption-attach" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">auto</span></code> (the default) executes <em>COMMAND</em> through SSH.  <code class="docutils literal notranslate"><span class="pre">none</span></code> starts the
+VM and waits for QEMU without opening SSH; in that mode <em>COMMAND</em> is not
+executed.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ssh">
-<span class="sig-name descname"><span class="pre">--ssh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ssh" title="Link to this definition"></a></dt>
-<dd><p>Open an interactive SSH session to the VM after boot.  vmocs shuts the VM
-down cleanly when the session ends.</p>
+<dt class="sig sig-object std" id="cmdoption-save">
+<span class="sig-name descname"><span class="pre">--save</span></span><span class="sig-prename descclassname"> <span class="pre">PATH</span></span><a class="headerlink" href="#cmdoption-save" title="Link to this definition"></a></dt>
+<dd><p>After guest shutdown, flatten changes to the primary disk into a standalone
+qcow2 image at <em>PATH</em>.</p>
 </dd></dl>
 
-</section>
-<section id="shutdown-behaviour">
-<h2>Shutdown Behaviour<a class="headerlink" href="#shutdown-behaviour" title="Link to this heading"></a></h2>
-<p>When vmocs receives <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code> or <code class="docutils literal notranslate"><span class="pre">SIGINT</span></code> (and <code class="docutils literal notranslate"><span class="pre">--detach</span></code> is not set):</p>
-<ol class="arabic simple">
-<li><p>Sends ACPI powerdown via QMP and reschedules <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code> in 10 seconds.</p></li>
-<li><p>On the second signal, repeats step 1.</p></li>
-<li><p>On the third signal, sends <code class="docutils literal notranslate"><span class="pre">quit</span></code> via QMP.  If QMP fails, force-kills
-QEMU after 5 seconds.</p></li>
-</ol>
 </section>
 <section id="examples">
 <h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
-<p>Basic launch:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+<p>Run a command and return its status:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span> <span class="n">hostname</span>
 </pre></div>
 </div>
-<p>Launch with 8 cores, 16 GB RAM, and immediate SSH:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">cores</span> <span class="mi">8</span> <span class="o">--</span><span class="n">memory</span> <span class="mi">16384</span> <span class="o">--</span><span class="n">ssh</span>
+<p>Open an interactive login shell:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
 </pre></div>
 </div>
-<p>Pass through a GPU:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">pci</span> <span class="mi">0000</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mf">00.0</span> <span class="o">--</span><span class="n">pci</span> <span class="mi">0000</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mf">00.1</span>
-</pre></div>
-</div>
-<p>Background launch (for scripting):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">launch</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">detach</span>
+<p>Start an unattached VM and hold the supervisor open:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">attach</span> <span class="n">none</span>
 </pre></div>
 </div>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
-<p><em class="manpage">vmocs(1)</em>, <em class="manpage">vmocs-stop(1)</em>, <em class="manpage">vmocs-templates.yaml(5)</em></p>
+<p><em class="manpage">vmocs(1)</em>, <em class="manpage">vmocs-launch(1)</em>,
+<em class="manpage">vmocs-stop(1)</em>, <em class="manpage">vmocs-templates.yaml(5)</em></p>
 </section>
 </section>
 
@@ -202,8 +187,8 @@ QEMU after 5 seconds.</p></li>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="vmocs.html" class="btn btn-neutral float-left" title="vmocs" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="run.html" class="btn btn-neutral float-right" title="vmocs run" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="launch.html" class="btn btn-neutral float-left" title="vmocs launch" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="list.html" class="btn btn-neutral float-right" title="vmocs list" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

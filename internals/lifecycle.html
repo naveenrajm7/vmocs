@@ -1,0 +1,224 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lifecycle and cleanup &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Design decisions" href="design-decisions.html" />
+    <link rel="prev" title="Slurm integration architecture" href="slurm-architecture.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Internals</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="slurm-architecture.html">Slurm integration architecture</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Lifecycle and cleanup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#spank-lifecycle">SPANK lifecycle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#attached-session">Attached session</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#unattached-session">Unattached session</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#runtime-state">Runtime state</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#disk-ownership">Disk ownership</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="design-decisions.html">Design decisions</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Internals</a></li>
+      <li class="breadcrumb-item active">Lifecycle and cleanup</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/internals/lifecycle.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="lifecycle-and-cleanup">
+<span id="slurm-lifecycle"></span><h1>Lifecycle and cleanup<a class="headerlink" href="#lifecycle-and-cleanup" title="Link to this heading"></a></h1>
+<p>The Slurm task owns the VM lifetime.  A normal command, interactive logout,
+guest shutdown, Slurm cancellation, or time limit must all converge on QEMU
+termination and runtime-directory cleanup.</p>
+<section id="spank-lifecycle">
+<h2>SPANK lifecycle<a class="headerlink" href="#spank-lifecycle" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></dt><dd><p>Registers <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>, <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code>, and <code class="docutils literal notranslate"><span class="pre">--vm-attach</span></code> in every
+context where the plugin is loaded.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_init_post_opt</span></code></dt><dd><p>In allocator context, records the selected template in the job-control
+environment.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_task_init</span></code></dt><dd><p>Runs remotely as the job user inside the task cgroup.  It rejects a task
+count other than one, derives the vmocs resource arguments, and prepends
+<code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> to the task argv.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_exit</span></code></dt><dd><p>Runs in remote context after the task.  It calls
+<code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">stop</span> <span class="pre">JOB_ID</span> <span class="pre">--if-exists</span></code> as a best-effort fallback.  Cleanup errors
+from this hook do not replace the task's result.</p>
+</dd>
+</dl>
+</section>
+<section id="attached-session">
+<h2>Attached session<a class="headerlink" href="#attached-session" title="Link to this heading"></a></h2>
+<p>In the default <code class="docutils literal notranslate"><span class="pre">--vm-attach=auto</span></code> mode, <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> supervises QEMU and an
+SSH child.  It returns the guest command's status, requests an orderly guest
+poweroff, escalates through QMP if necessary, optionally saves the primary
+disk, and removes the per-job runtime directory.</p>
+<p>When the local input is a terminal, a transport failure while QEMU remains
+alive causes vmocs to wait for SSH and reconnect.  This allows an interactive
+session to survive a guest reboot.  A non-interactive command is never
+replayed because doing so could repeat side effects.</p>
+<p>QEMU is launched with <code class="docutils literal notranslate"><span class="pre">-no-shutdown</span></code> for supervised sessions.  A QMP
+<code class="docutils literal notranslate"><span class="pre">RESET</span></code> therefore leaves QEMU alive during reboot.  A guest <code class="docutils literal notranslate"><span class="pre">SHUTDOWN</span></code>
+event is converted into a QMP quit so the Slurm task can finish.</p>
+</section>
+<section id="unattached-session">
+<h2>Unattached session<a class="headerlink" href="#unattached-session" title="Link to this heading"></a></h2>
+<p>With <code class="docutils literal notranslate"><span class="pre">--vm-attach=none</span></code>, vmocs does not start SSH.  It waits directly for
+QEMU and installs signal handling that requests ACPI powerdown before
+escalating to QMP quit and, if necessary, a process kill.  This mode exists for
+manual or externally managed connections; attached mode is the normal Slurm
+workflow.</p>
+</section>
+<section id="runtime-state">
+<h2>Runtime state<a class="headerlink" href="#runtime-state" title="Link to this heading"></a></h2>
+<p>The configured runtime directory contains one subdirectory per job ID.  A
+typical directory contains:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Path</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">disk.qcow2</span></code></p></td>
+<td><p>Temporary overlay for the primary guest disk</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">id_ed25519</span></code></p></td>
+<td><p>Per-launch SSH private key when key injection is enabled</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cloud-init.iso</span></code></p></td>
+<td><p>Generated cloud-init data in cloud-init boot mode</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">qmp.sock</span></code></p></td>
+<td><p>QEMU Machine Protocol socket</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">console.sock</span></code></p></td>
+<td><p>Guest serial console socket</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">qemu.log</span></code></p></td>
+<td><p>QEMU standard output and error</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vm.json</span></code></p></td>
+<td><p>PID, job ID, template, SSH, and runtime metadata</p></td>
+</tr>
+</tbody>
+</table>
+<p>Normal cleanup removes this directory.  If saving the disk fails, vmocs keeps
+the stopped overlay so an administrator can recover it manually.</p>
+</section>
+<section id="disk-ownership">
+<h2>Disk ownership<a class="headerlink" href="#disk-ownership" title="Link to this heading"></a></h2>
+<p>The template's base image is never modified by a normal launch.  vmocs writes
+to a per-job COW overlay and discards it at cleanup unless <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> is
+specified.  Saving occurs after the guest is stopped and flattens the backing
+chain into a standalone qcow2 file.</p>
+<p>Template <code class="docutils literal notranslate"><span class="pre">extra-disks</span></code> are different: vmocs attaches them directly.  Their
+writes persist independently and they are not included in VM saves or memory
+snapshots.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="slurm-architecture.html" class="btn btn-neutral float-left" title="Slurm integration architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="design-decisions.html" class="btn btn-neutral float-right" title="Design decisions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

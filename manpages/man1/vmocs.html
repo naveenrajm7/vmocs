@@ -42,7 +42,13 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../slurm/index.html">Using vmocs with Slurm</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="../../cli.html">Command-Line Reference</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">vmocs</a><ul>
@@ -55,6 +61,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="launch.html">vmocs launch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="run.html">vmocs run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="list.html">vmocs list</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stop.html">vmocs stop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="template.html">vmocs template</a></li>
@@ -62,6 +69,10 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../internals/index.html">Internals</a></li>
 </ul>
 
         </div>
@@ -130,6 +141,13 @@ working directory.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">run</span></span></dt>
+<dd><p>Launch a VM and execute a command inside it over SSH.  See
+<em class="manpage">vmocs-run(1)</em>.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">list</span></span></dt>
 <dd><p>List running VMs.  See <em class="manpage">vmocs-list(1)</em>.</p>
 </dd></dl>
@@ -164,7 +182,8 @@ working directory.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
-<p><em class="manpage">vmocs-launch(1)</em>, <em class="manpage">vmocs-list(1)</em>, <em class="manpage">vmocs-stop(1)</em>,
+<p><em class="manpage">vmocs-launch(1)</em>, <em class="manpage">vmocs-run(1)</em>,
+<em class="manpage">vmocs-list(1)</em>, <em class="manpage">vmocs-stop(1)</em>,
 <em class="manpage">vmocs-template(1)</em>, <em class="manpage">vmocs-snapshot(1)</em>,
 <em class="manpage">vmocs.yaml(5)</em>, <em class="manpage">vmocs-templates.yaml(5)</em></p>
 </section>

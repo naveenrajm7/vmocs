@@ -1,0 +1,272 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Troubleshooting the Slurm plugin &mdash; vmocs 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Command-Line Reference" href="../cli.html" />
+    <link rel="prev" title="Slurm plugin reference" href="reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            vmocs
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../direct/index.html">Using vmocs directly</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Using vmocs with Slurm</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-start-for-users">Quick start for users</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#choose-your-guide">Choose your guide</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="user-guide.html">Slurm user guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="admin-guide.html">Cluster administrator guide</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gpu-passthrough.html">GPU passthrough</a></li>
+<li class="toctree-l3"><a class="reference internal" href="reference.html">Slurm plugin reference</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Troubleshooting the Slurm plugin</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#vm-image-is-unrecognized"><code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> is unrecognized</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#the-option-appears-but-the-vm-does-not-start">The option appears but the VM does not start</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#seamless-guest-sessions-currently-require-ntasks-1"><code class="docutils literal notranslate"><span class="pre">seamless</span> <span class="pre">guest</span> <span class="pre">sessions</span> <span class="pre">currently</span> <span class="pre">require</span> <span class="pre">--ntasks=1</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#qemu-fails-before-ssh-is-ready">QEMU fails before SSH is ready</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#the-vm-times-out-waiting-for-ssh">The VM times out waiting for SSH</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#cpu-or-memory-does-not-match-the-request">CPU or memory does not match the request</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#the-allocated-gpu-is-missing-in-the-guest">The allocated GPU is missing in the guest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#permission-denied-for-kvm-or-vfio">Permission denied for KVM or VFIO</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#qemu-reports-a-pci-irq-assertion-for-an-amd-gpu">QEMU reports a PCI IRQ assertion for an AMD GPU</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#a-batch-script-is-not-found-inside-the-guest">A batch script is not found inside the guest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#a-cancelled-job-leaves-runtime-state">A cancelled job leaves runtime state</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../cli.html">Command-Line Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conf.html">Configuration Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Internals</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../internals/index.html">Internals</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">vmocs</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Using vmocs with Slurm</a></li>
+      <li class="breadcrumb-item active">Troubleshooting the Slurm plugin</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/slurm/troubleshooting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="troubleshooting-the-slurm-plugin">
+<span id="slurm-troubleshooting"></span><h1>Troubleshooting the Slurm plugin<a class="headerlink" href="#troubleshooting-the-slurm-plugin" title="Link to this heading"></a></h1>
+<p>Start with the client-visible option, then follow the failure to the compute
+node.  vmocs prints user-facing errors to the job's standard error; QEMU output
+is stored under the configured runtime directory.</p>
+<section id="vm-image-is-unrecognized">
+<span id="troubleshoot-unrecognized-option"></span><h2><code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> is unrecognized<a class="headerlink" href="#vm-image-is-unrecognized" title="Link to this heading"></a></h2>
+<p>Run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">--</span><span class="n">help</span> <span class="o">|</span> <span class="n">grep</span> <span class="o">--</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span>
+</pre></div>
+</div>
+<p>If no option appears:</p>
+<ul class="simple">
+<li><p>install the plugin on the login or submission node, not only the compute
+nodes;</p></li>
+<li><p>confirm that its <code class="docutils literal notranslate"><span class="pre">plugstack.conf</span></code> includes the vmocs fragment;</p></li>
+<li><p>inspect client and Slurm daemon logs for a plugin-load warning; and</p></li>
+<li><p>confirm the plugin was built against the deployed Slurm <code class="docutils literal notranslate"><span class="pre">X.YY</span></code> release
+series.</p></li>
+</ul>
+<p>Because the packaged plugstack entry is <code class="docutils literal notranslate"><span class="pre">optional</span></code>, an incompatible or
+missing shared object produces a warning but does not prevent ordinary Slurm
+commands from starting.</p>
+</section>
+<section id="the-option-appears-but-the-vm-does-not-start">
+<h2>The option appears but the VM does not start<a class="headerlink" href="#the-option-appears-but-the-vm-does-not-start" title="Link to this heading"></a></h2>
+<p>Deploy the plugin, vmocs CLI, configuration, templates, images, and required
+host tools on every eligible compute node.  Confirm that <code class="docutils literal notranslate"><span class="pre">vmocs_path</span></code> and
+<code class="docutils literal notranslate"><span class="pre">vmocs_conf</span></code> name paths valid on compute nodes and restart <code class="docutils literal notranslate"><span class="pre">slurmd</span></code> after
+replacing the plugin.</p>
+</section>
+<section id="seamless-guest-sessions-currently-require-ntasks-1">
+<h2><code class="docutils literal notranslate"><span class="pre">seamless</span> <span class="pre">guest</span> <span class="pre">sessions</span> <span class="pre">currently</span> <span class="pre">require</span> <span class="pre">--ntasks=1</span></code><a class="headerlink" href="#seamless-guest-sessions-currently-require-ntasks-1" title="Link to this heading"></a></h2>
+<p>Set the step task count explicitly:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="n">hostname</span>
+</pre></div>
+</div>
+<p>Increasing CPUs per task with <code class="docutils literal notranslate"><span class="pre">-c</span></code> does not increase the task count and is
+the supported way to give the VM more vCPUs.</p>
+</section>
+<section id="qemu-fails-before-ssh-is-ready">
+<h2>QEMU fails before SSH is ready<a class="headerlink" href="#qemu-fails-before-ssh-is-ready" title="Link to this heading"></a></h2>
+<p>Find the job runtime directory and inspect <code class="docutils literal notranslate"><span class="pre">qemu.log</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="nb">list</span>
+<span class="n">less</span> <span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">JOB_ID</span><span class="o">/</span><span class="n">qemu</span><span class="o">.</span><span class="n">log</span>
+</pre></div>
+</div>
+<p>Common causes include an unreadable image, an unavailable QEMU binary,
+insufficient <code class="docutils literal notranslate"><span class="pre">/dev/kvm</span></code> permission, an invalid custom QEMU argument, a busy
+SSH forwarding port range, or a VFIO device that cannot be attached.</p>
+</section>
+<section id="the-vm-times-out-waiting-for-ssh">
+<h2>The VM times out waiting for SSH<a class="headerlink" href="#the-vm-times-out-waiting-for-ssh" title="Link to this heading"></a></h2>
+<p>Confirm that:</p>
+<ul class="simple">
+<li><p>the guest image runs an SSH server;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ssh-user</span></code> matches an account in the image;</p></li>
+<li><p>a cloud-init image uses <code class="docutils literal notranslate"><span class="pre">boot-mode:</span> <span class="pre">cloud-init</span></code>;</p></li>
+<li><p>a Vagrant-compatible image uses <code class="docutils literal notranslate"><span class="pre">boot-mode:</span> <span class="pre">vagrant</span></code>;</p></li>
+<li><p>the image accepts the selected key-injection method; and</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ssh-timeout</span></code> is long enough for the image's first boot.</p></li>
+</ul>
+<p>Inspect the serial socket or <code class="docutils literal notranslate"><span class="pre">qemu.log</span></code> for guest boot errors.  Increasing
+the timeout does not fix a wrong SSH user or an image without cloud-init.</p>
+</section>
+<section id="cpu-or-memory-does-not-match-the-request">
+<h2>CPU or memory does not match the request<a class="headerlink" href="#cpu-or-memory-does-not-match-the-request" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--cpus-per-task</span></code> rather than only requesting a total job CPU count:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">cpus</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">task</span><span class="o">=</span><span class="mi">4</span> <span class="o">--</span><span class="n">mem</span><span class="o">=</span><span class="mi">8</span><span class="n">G</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="n">bash</span> <span class="o">-</span><span class="n">lc</span> <span class="s1">&#39;nproc; free -m&#39;</span>
+</pre></div>
+</div>
+<p>The plugin reads <code class="docutils literal notranslate"><span class="pre">SLURM_CPUS_PER_TASK</span></code>, <code class="docutils literal notranslate"><span class="pre">SLURM_MEM_PER_NODE</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">SLURM_MEM_PER_CPU</span></code>.  It reserves memory for QEMU, and the guest consumes
+additional memory internally.  See <a class="reference internal" href="reference.html#slurm-resource-mapping"><span class="std std-ref">Resource mapping</span></a>.</p>
+</section>
+<section id="the-allocated-gpu-is-missing-in-the-guest">
+<h2>The allocated GPU is missing in the guest<a class="headerlink" href="#the-allocated-gpu-is-missing-in-the-guest" title="Link to this heading"></a></h2>
+<p>On the compute node, verify all of the following:</p>
+<ul class="simple">
+<li><p>the GPU or VF is bound to <code class="docutils literal notranslate"><span class="pre">vfio-pci</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gres-conf-gen.py</span> <span class="pre">--check</span></code> reports the expected BDF and group;</p></li>
+<li><p>Slurm's GRES entry uses <code class="docutils literal notranslate"><span class="pre">File=/dev/vfio/&lt;group&gt;</span></code>;</p></li>
+<li><p>device constraints allow the allocated group and deny unallocated groups;</p></li>
+<li><p>the job user can open the group node through its <code class="docutils literal notranslate"><span class="pre">kvm</span></code> group membership;</p></li>
+<li><p>the template sets <code class="docutils literal notranslate"><span class="pre">pci-root-port:</span> <span class="pre">true</span></code> for AMD GPUs; and</p></li>
+<li><p>the guest contains the appropriate device driver.</p></li>
+</ul>
+<p>Test the allocation from inside a job before involving QEMU:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">gres</span><span class="o">=</span><span class="n">gpu</span><span class="p">:</span><span class="mi">1</span> <span class="n">ls</span> <span class="o">-</span><span class="n">l</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">vfio</span>
+</pre></div>
+</div>
+</section>
+<section id="permission-denied-for-kvm-or-vfio">
+<h2>Permission denied for KVM or VFIO<a class="headerlink" href="#permission-denied-for-kvm-or-vfio" title="Link to this heading"></a></h2>
+<p>Check <code class="docutils literal notranslate"><span class="pre">/dev/kvm</span></code>, <code class="docutils literal notranslate"><span class="pre">/dev/vfio/vfio</span></code>, and the allocated numeric VFIO group.
+The job user's login session must include the <code class="docutils literal notranslate"><span class="pre">kvm</span></code> group, and the udev rule
+must grant group access to numeric VFIO devices.  File permissions and Slurm's
+device cgroup are both required.</p>
+</section>
+<section id="qemu-reports-a-pci-irq-assertion-for-an-amd-gpu">
+<h2>QEMU reports a PCI IRQ assertion for an AMD GPU<a class="headerlink" href="#qemu-reports-a-pci-irq-assertion-for-an-amd-gpu" title="Link to this heading"></a></h2>
+<p>Set the template field:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pci</span><span class="o">-</span><span class="n">root</span><span class="o">-</span><span class="n">port</span><span class="p">:</span> <span class="n">true</span>
+</pre></div>
+</div>
+<p>This gives every passed function a dedicated Q35 PCIe root port and avoids the
+interrupt-routing failure seen when affected AMD devices are attached
+directly.</p>
+</section>
+<section id="a-batch-script-is-not-found-inside-the-guest">
+<h2>A batch script is not found inside the guest<a class="headerlink" href="#a-batch-script-is-not-found-inside-the-guest" title="Link to this heading"></a></h2>
+<p>Slurm's private spool copy of a submitted script is a host file and is not
+automatically staged into the VM.  Use a host-side batch script containing an
+explicit <code class="docutils literal notranslate"><span class="pre">srun</span> <span class="pre">--vm-image</span> <span class="pre">...</span> <span class="pre">/shared/path/job.sh</span></code> step, and expose that
+shared path inside the guest through the template.  See
+<a class="reference internal" href="user-guide.html#slurm-user-guide"><span class="std std-ref">Slurm user guide</span></a> for an example.</p>
+</section>
+<section id="a-cancelled-job-leaves-runtime-state">
+<h2>A cancelled job leaves runtime state<a class="headerlink" href="#a-cancelled-job-leaves-runtime-state" title="Link to this heading"></a></h2>
+<p>List recorded VMs and ask vmocs to clean up the job ID:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="nb">list</span>
+<span class="n">vmocs</span> <span class="n">stop</span> <span class="n">JOB_ID</span> <span class="o">--</span><span class="k">if</span><span class="o">-</span><span class="n">exists</span>
+</pre></div>
+</div>
+<p>Check that the plugin exit hook can resolve the same vmocs binary and
+configuration as the task-init hook.  If QEMU is still alive, inspect Slurm's
+signal handling and <code class="docutils literal notranslate"><span class="pre">qemu.log</span></code> before removing runtime files manually.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="reference.html" class="btn btn-neutral float-left" title="Slurm plugin reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../cli.html" class="btn btn-neutral float-right" title="Command-Line Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Naveenraj Muthuraj.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

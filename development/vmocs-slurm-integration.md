@@ -1,5 +1,11 @@
 # vmocs: SLURM Integration
 
+> **Historical design note:** This document contains early designs and
+> unimplemented alternatives. The current C plugin behavior is documented in
+> [`docs/source/slurm/`](../docs/source/slurm/index.rst), and the current
+> architecture is documented in
+> [`docs/source/internals/`](../docs/source/internals/index.rst).
+
 ## Overview
 
 vmocs integrates with SLURM via the SPANK plugin API — the same mechanism Pyxis uses for containers. The SPANK plugin intercepts the job lifecycle to start a VM before the user's command runs and tear it down on exit. SLURM handles all resource allocation; vmocs only reads what SLURM already decided.

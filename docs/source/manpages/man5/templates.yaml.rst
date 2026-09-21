@@ -71,8 +71,8 @@ Fields
 .. describe:: image-dir
 
    Directory containing ``qcow2`` images.  vmocs uses the first ``*.qcow2``
-   file found.  Mutually exclusive with ``image``; ``image`` takes precedence
-   when a snapshot is not in use.
+   file found.  Define either ``image-dir`` or ``image``.  If both are set,
+   ``image-dir`` currently takes precedence when a snapshot is not in use.
 
 .. describe:: boot-mode
 
@@ -210,17 +210,21 @@ Fields
 
 .. describe:: gpu
 
-   GPU passthrough mode: ``full`` (whole-device VFIO), ``sriov``
-   (SR-IOV virtual function), or omit for no GPU passthrough.
+   Reserved template field.  The current Slurm plugin does not consult it;
+   GPU passthrough is driven by the VFIO group devices allowed to the job by
+   Slurm GRES configuration.
 
 .. describe:: bind-vcpus
 
-   Boolean.  Pin guest vCPUs to host CPUs.  Default: ``false``.
+   Reserved boolean field.  Explicit per-vCPU pinning is not currently
+   implemented.  Under Slurm, the QEMU process still inherits the task's CPU
+   cgroup constraints.
 
 .. describe:: user-data
 
-   Custom cloud-init user-data string.  When set, vmocs uses this instead of
-   generating its own user-data.  Only applies to ``cloud-init`` boot mode.
+   Reserved field.  Custom cloud-init user-data is not currently applied;
+   vmocs generates user-data containing the selected SSH user and ephemeral
+   public key.
 
 .. describe:: kernel
 

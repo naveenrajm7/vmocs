@@ -1,5 +1,10 @@
 # Seamless Guest Sessions
 
+> **Implementation status:** The attached-session design is implemented. See
+> the current [Slurm user guide](../docs/source/slurm/user-guide.rst) and
+> [lifecycle documentation](../docs/source/internals/lifecycle.rst). Remaining
+> limitations in this file are planning context, not the public reference.
+
 ## Goal
 
 Make a Slurm task enter the VM directly instead of printing an SSH command that
@@ -124,4 +129,3 @@ follow-up staging mechanism or a documented shared-filesystem contract.
 3. Add bounded SSH reconnection and QMP reset/shutdown event handling.
 4. Add working-directory and selected-environment forwarding.
 5. Add batch-script staging and, if needed, one-VM-per-task identities.
-

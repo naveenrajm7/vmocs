@@ -22,6 +22,7 @@ htmlhelp_basename = 'vmocsdoc'
 titles = {
     'vmocs':          'Lightweight VM launcher for SLURM',
     'launch':         'Launch a VM from a template',
+    'run':            'Launch a VM and run a guest command',
     'list':           'List running VMs',
     'stop':           'Stop a running VM',
     'template':       'List and inspect VM templates',

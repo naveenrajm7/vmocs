@@ -37,6 +37,11 @@ Commands
 
    Launch a VM from a template.  See :manpage:`vmocs-launch(1)`.
 
+.. describe:: run
+
+   Launch a VM and execute a command inside it over SSH.  See
+   :manpage:`vmocs-run(1)`.
+
 .. describe:: list
 
    List running VMs.  See :manpage:`vmocs-list(1)`.
@@ -65,6 +70,7 @@ Files
 See Also
 --------
 
-:manpage:`vmocs-launch(1)`, :manpage:`vmocs-list(1)`, :manpage:`vmocs-stop(1)`,
+:manpage:`vmocs-launch(1)`, :manpage:`vmocs-run(1)`,
+:manpage:`vmocs-list(1)`, :manpage:`vmocs-stop(1)`,
 :manpage:`vmocs-template(1)`, :manpage:`vmocs-snapshot(1)`,
 :manpage:`vmocs.yaml(5)`, :manpage:`vmocs-templates.yaml(5)`

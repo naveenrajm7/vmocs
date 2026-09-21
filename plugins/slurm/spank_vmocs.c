@@ -12,6 +12,7 @@
  *
  * Plugin args (in plugstack.conf):
  *   vmocs_path=/usr/local     — prefix that contains bin/vmocs (default: PATH)
+ *   vmocs_conf=/etc/vmocs/vmocs.yaml — config passed to every vmocs command
  *
  * Compile:
  *   make -C plugins/slurm

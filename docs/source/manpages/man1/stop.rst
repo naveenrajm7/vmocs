@@ -8,7 +8,7 @@ Synopsis
 
 .. code-block:: text
 
-   vmocs stop [--save PATH] JOB_ID
+   vmocs stop [--save PATH] [--if-exists] JOB_ID
 
 Description
 -----------
@@ -25,6 +25,11 @@ Options
    inside the guest) into a new standalone ``qcow2`` image at *PATH*.  The
    resulting image can be used directly as a template ``image:`` for future
    jobs — equivalent to a "save disk" operation.
+
+.. option:: --if-exists
+
+   Exit successfully without output when the VM runtime metadata is already
+   gone.  The Slurm plugin uses this for best-effort cleanup.
 
 Examples
 --------

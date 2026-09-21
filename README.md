@@ -4,6 +4,13 @@ vmocs — **V**irtual **M**achine **O**n **C**ompute through **S**LURM — is a 
 
 The name is pronounced "vimoks", after [ವಿಮೋಕ್ಷ](https://alar.ink/dictionary/kannada/english/%E0%B2%B5%E0%B2%BF%E0%B2%AE%E0%B3%8B%E0%B2%95%E0%B3%8D%E0%B2%B7) (Kannada for liberation, an untying, unbounding) — fitting for a tool built to free users to run kernel-space workloads without interfering with other users or jobs.
 
+## Documentation
+
+- [Getting started](docs/source/getting-started.rst)
+- [Using vmocs directly](docs/source/direct/index.rst)
+- [Using vmocs with Slurm](docs/source/slurm/index.rst)
+- [CLI and configuration reference](docs/source/index.rst)
+
 ## Benefits
 
 * Seamlessly execute the user's task in a virtual machine.

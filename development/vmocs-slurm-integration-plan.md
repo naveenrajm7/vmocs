@@ -1,5 +1,10 @@
 # vmocs Slurm Integration Plan
 
+> **Historical plan:** The integration has evolved beyond parts of this plan.
+> Use the current [Slurm plugin documentation](../docs/source/slurm/index.rst)
+> and [internals documentation](../docs/source/internals/index.rst) for
+> implemented behavior.
+
 ## Context
 
 vmocs is a lightweight QEMU/KVM wrapper for HPC jobs. The VM lifecycle (`launch_vm`, `teardown_vm`, `build_qemu_cmdline`) is fully implemented and tested. The goal is to wire vmocs into Slurm's SPANK plugin lifecycle so that `srun --vm-image <template>` transparently boots a VM with Slurm-allocated resources and tears down on exit.

@@ -33,3 +33,42 @@ jobs:
 
       - name: Run tests
         run: pytest tests/
+
+  slurm-plugin:
+    name: Slurm plugin (build + SPANK smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools and Slurm
+        run: |
+          sudo apt-get update
+          # libslurm-dev supplies spank.h; slurm-client supplies srun/sbatch
+          # and the SPANK loader used to exercise the plugin without any
+          # daemons (no slurmctld, slurmd, munge, or cgroups required).
+          sudo apt-get install -y gcc make libslurm-dev slurm-client
+
+      - name: Build and smoke-test the SPANK plugin
+        run: ./tests/slurm-plugin-smoke.sh
+
+  package:
+    name: Debian package (build + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential debhelper fakeroot libslurm-dev lintian
+
+      - name: Build the .deb
+        run: make -C plugins/slurm deb
+
+      - name: Lint the .deb
+        run: lintian plugins/vmocs-slurm-plugin_*_amd64.deb
+
+      - name: Verify the plugin is in the payload
+        run: |
+          dpkg-deb -c plugins/vmocs-slurm-plugin_*_amd64.deb \
+            | grep -q 'slurm/spank_vmocs.so'

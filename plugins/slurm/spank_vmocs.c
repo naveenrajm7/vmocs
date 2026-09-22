@@ -5,7 +5,7 @@
  * Minimal vmocs SPANK plugin.
  *
  * Hooks used:
- *   slurm_spank_init          — register --vm-image and --vm-save options
+ *   slurm_spank_init          — register save/resume VM options
  *   slurm_spank_init_post_opt — propagate template name into job env (allocator)
  *   slurm_spank_task_init     — prepend vmocs run to the Slurm task argv
  *   slurm_spank_exit          — vmocs stop <jobid>         (best-effort cleanup)
@@ -37,6 +37,7 @@ SPANK_PLUGIN(vmocs, 1);
 static int  vm_enabled          = 0;
 static char vm_template[256]    = "";
 static char vm_save_path[1024]  = "";
+static char vm_resume_path[1024] = "";
 static char vm_attach[16]       = "auto";
 
 /* -------------------------------------------------------------------------
@@ -55,6 +56,13 @@ static int opt_vm_save(int val, const char *optarg, int remote)
 {
     strncpy(vm_save_path, optarg, sizeof(vm_save_path) - 1);
     vm_save_path[sizeof(vm_save_path) - 1] = '\0';
+    return ESPANK_SUCCESS;
+}
+
+static int opt_vm_resume(int val, const char *optarg, int remote)
+{
+    strncpy(vm_resume_path, optarg, sizeof(vm_resume_path) - 1);
+    vm_resume_path[sizeof(vm_resume_path) - 1] = '\0';
     return ESPANK_SUCCESS;
 }
 
@@ -81,10 +89,18 @@ static struct spank_option vmocs_options[] = {
     {
         "vm-save",
         "PATH",
-        "[vmocs] Flatten VM disk into a new qcow2 image when the job ends",
+        "[vmocs] Save a cold primary-disk checkpoint when the job ends",
         1,                              /* has_arg */
         0,                              /* val (unused) */
         (spank_opt_cb_f) opt_vm_save
+    },
+    {
+        "vm-resume",
+        "CHECKPOINT",
+        "[vmocs] Cold-boot from a complete vmocs checkpoint directory",
+        1,
+        0,
+        (spank_opt_cb_f) opt_vm_resume
     },
     {
         "vm-attach",
@@ -331,6 +347,10 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
     if (vm_save_path[0]) {
         prefix[prefix_count++] = "--save";
         prefix[prefix_count++] = vm_save_path;
+    }
+    if (vm_resume_path[0]) {
+        prefix[prefix_count++] = "--resume";
+        prefix[prefix_count++] = vm_resume_path;
     }
 
     token = strtok_r(pci_args, " ", &saveptr);

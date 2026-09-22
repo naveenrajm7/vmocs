@@ -15,8 +15,15 @@ The plugin registers these options with Slurm clients and remote job steps:
 
 .. option:: --vm-save PATH
 
-   After guest shutdown, flatten the primary disk overlay into a standalone
-   qcow2 file at the host path *PATH*.  Meaningful only with ``--vm-image``.
+   After guest shutdown, publish a cold primary-disk checkpoint directory at
+   the host path *PATH*.  The destination must not already exist.  Meaningful
+   only with ``--vm-image``.
+
+.. option:: --vm-resume CHECKPOINT
+
+   Cold-boot from a complete vmocs checkpoint.  The checkpoint must have been
+   created from the same template passed through ``--vm-image``.  Resume uses
+   a new writable overlay and never mutates *CHECKPOINT*.
 
 .. option:: --vm-attach MODE
 
@@ -125,7 +132,7 @@ Lifecycle hooks
    * - Hook
      - Action
    * - ``slurm_spank_init``
-     - Register the three Slurm options.
+     - Register the four Slurm options.
    * - ``slurm_spank_init_post_opt``
      - Persist the selected template in the job environment in allocator
        context.

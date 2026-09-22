@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from vmocs import session
 from vmocs.session import build_ssh_command
 
@@ -19,6 +21,22 @@ def _mock_ssh_process(status):
     process.poll.return_value = status
     process.wait.return_value = status
     return process
+
+
+def _runtime_meta(tmp_path):
+    runtime = tmp_path / 'runtime'
+    runtime.mkdir()
+    overlay = runtime / 'disk.qcow2'
+    overlay.write_bytes(b'disk')
+    meta = _meta()
+    meta.update({
+        'pid': 123,
+        'qmp_socket': str(runtime / 'qmp.sock'),
+        'runtime_dir': str(runtime),
+        'overlay': str(overlay),
+        'state': 'running',
+    })
+    return meta
 
 
 def test_build_ssh_command_preserves_remote_arguments():
@@ -80,16 +98,10 @@ def test_interactive_session_reconnects_after_reset(monkeypatch, tmp_path):
         session.subprocess, 'Popen',
         lambda _argv: _mock_ssh_process(next(statuses)))
     monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
-    monkeypatch.setattr(session, 'wait_for_ssh', lambda *args: True)
+    monkeypatch.setattr(session, 'wait_for_ssh', lambda *args, **kwargs: True)
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
 
-    meta = _meta()
-    meta.update({
-        'pid': 123,
-        'qmp_socket': '/tmp/qmp.sock',
-        'runtime_dir': str(tmp_path / 'runtime'),
-        'overlay': str(tmp_path / 'disk.qcow2'),
-    })
+    meta = _runtime_meta(tmp_path)
 
     assert session.run_attached_session(meta, ('bash', '-l')) == 0
     assert not (tmp_path / 'runtime').exists()
@@ -107,13 +119,7 @@ def test_noninteractive_command_is_not_replayed_on_transport_error(
     monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
 
-    meta = _meta()
-    meta.update({
-        'pid': 123,
-        'qmp_socket': '/tmp/qmp.sock',
-        'runtime_dir': str(tmp_path / 'runtime'),
-        'overlay': str(tmp_path / 'disk.qcow2'),
-    })
+    meta = _runtime_meta(tmp_path)
 
     assert session.run_attached_session(meta, ('train.py',)) == 255
     assert ssh.call_count == 1
@@ -140,13 +146,7 @@ def test_clean_logout_wins_over_delayed_reset_event(monkeypatch, tmp_path):
     monkeypatch.setattr(session, 'wait_for_ssh', MagicMock(return_value=True))
     monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
 
-    meta = _meta()
-    meta.update({
-        'pid': 123,
-        'qmp_socket': '/tmp/qmp.sock',
-        'runtime_dir': str(tmp_path / 'runtime'),
-        'overlay': str(tmp_path / 'disk.qcow2'),
-    })
+    meta = _runtime_meta(tmp_path)
 
     assert session.run_attached_session(meta, ('bash', '-l')) == 0
     assert ssh.call_count == 1
@@ -191,3 +191,42 @@ def test_sidecar_exit_during_external_stop_does_not_fail_ssh(
     assert session._run_ssh(meta, ('true',), False, watcher) == 0
     watcher.monitor.quit.assert_not_called()
     process.terminate.assert_not_called()
+
+
+def test_stop_request_terminates_ssh_without_waiting_for_transport(monkeypatch):
+    process = MagicMock()
+    process.poll.return_value = None
+    process.wait.return_value = -15
+    monkeypatch.setattr(session.subprocess, 'Popen', lambda _argv: process)
+
+    watcher = MagicMock()
+    assert session._run_ssh(
+        _meta(), ('true',), False, watcher,
+        stop_requested=lambda: True) == -15
+
+    process.terminate.assert_called_once_with()
+
+
+def test_checkpoint_failure_preserves_stopped_runtime(monkeypatch, tmp_path):
+    watcher = MagicMock()
+    watcher.reset_count = 0
+    watcher.guest_shutdown = False
+    monkeypatch.setattr(session, '_LifecycleWatcher', lambda _socket: watcher)
+    monkeypatch.setattr(session.os, 'isatty', lambda _fd: False)
+    monkeypatch.setattr(
+        session.subprocess, 'Popen',
+        lambda _argv: _mock_ssh_process(0))
+    monkeypatch.setattr(session, '_process_alive', lambda _pid: True)
+    monkeypatch.setattr(session, '_wait_for_qemu', lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        session, 'create_checkpoint',
+        MagicMock(side_effect=RuntimeError('save failed')))
+
+    meta = _runtime_meta(tmp_path)
+    meta['save_path'] = str(tmp_path / 'checkpoint')
+    meta['checkpoint_id'] = 'checkpoint-42'
+
+    with pytest.raises(RuntimeError, match='save failed'):
+        session.run_attached_session(meta, ('true',))
+
+    assert (tmp_path / 'runtime' / 'disk.qcow2').exists()

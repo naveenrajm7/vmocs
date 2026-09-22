@@ -1,6 +1,6 @@
 qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
 runtime-dir: /tmp/vmocs
-templates: /home/AMD/nmuthura/devcloud/vmocs/tests/slurm-e2e/target-templates.yaml
+templates: /opt/vmocs/tests/slurm-e2e/target-templates.yaml
 
 gpu-devices: []
 

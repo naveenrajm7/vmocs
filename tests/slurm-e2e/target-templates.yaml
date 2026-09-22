@@ -1,6 +1,6 @@
 vfio-user-sidecars-e2e:
   description: Combined TPM, virtio-fs, rocJitsu, and rocm-ernic acceptance VM
-  image: /home/AMD/nmuthura/devcloud/stage1-vfio-user-vm/images/qemu-minimal.qcow2
+  image: /var/lib/vmocs/images/qemu-minimal.qcow2
   qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
   machine-type: q35
   cpu-model: EPYC
@@ -12,9 +12,30 @@ vfio-user-sidecars-e2e:
   tpm: true
   mount-points:
     vmocs-e2e:
-      path: /home/AMD/nmuthura/devcloud/vmocs
+      path: /opt/vmocs
       type: virtio-fs
   emulated-devices:
     - type: rocm-ernic
+    - type: rocjitsu
+      profile: mi455x
+
+checkpoint-e2e:
+  description: Stage-1 checkpoint acceptance VM
+  image: /var/lib/vmocs/images/qemu-minimal.qcow2
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  machine-type: q35
+  cpu-model: EPYC
+  disk-model: virtio
+  disk-cache: writeback
+  boot-mode: cloud-init
+  ssh-user: ubuntu
+  ssh-timeout: 300
+  tpm: true
+  pci-root-port: true
+  mount-points:
+    vmocs-e2e:
+      path: /opt/vmocs
+      type: virtio-fs
+  emulated-devices:
     - type: rocjitsu
       profile: mi455x

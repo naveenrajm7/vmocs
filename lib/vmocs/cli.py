@@ -16,10 +16,13 @@ from .config import Config
 from .templates import TemplateConfig
 from .launch import (
     _graceful_shutdown,
+    _write_metadata,
     is_vm_stopping,
     launch_vm,
+    stop_vm_sidecars,
     teardown_vm,
 )
+from .checkpoint import create_checkpoint
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
 from .session import run_attached_session
@@ -200,11 +203,14 @@ def snapshot_create(ctx, template_name, snap_dir, cores, memory):
 @click.option('--pci', 'pci_devices', multiple=True, metavar='BDF')
 @click.option('--attach', type=click.Choice(['auto', 'none']), default='auto',
               show_default=True, help='Attach to the guest over SSH or only hold the VM.')
-@click.option('--save', 'save_path', default=None, metavar='PATH')
+@click.option('--save', 'save_path', default=None, metavar='PATH',
+              help='Publish a cold primary-disk checkpoint directory.')
+@click.option('--resume', 'resume_path', default=None, metavar='CHECKPOINT',
+              help='Cold-boot from a complete vmocs checkpoint directory.')
 @click.argument('command', nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
 def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
-        save_path, command):
+        save_path, resume_path, command):
     """Launch TEMPLATE_NAME and run COMMAND inside it over SSH."""
     cfg, tpls = _load(ctx.obj['config_path'])
     if template_name not in tpls:
@@ -218,23 +224,32 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
                f'({cores} cores, {memory} MB)...')
     meta = launch_vm(
         cfg, tpl, cores, memory, job_id, pci_devices=pci_devices,
-        supervised=(attach == 'auto'))
+        supervised=(attach == 'auto'), save_path=save_path,
+        resume_path=resume_path)
     click.echo(f'VM ready  job_id={meta["job_id"]}  '
                f'ssh -i {meta["key_path"]} -p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')
 
     if attach == 'none':
+        remove_runtime = False
         try:
             _block_until_exit(
                 meta['pid'], meta['qmp_socket'],
                 meta.get('_sidecar_manager'))
-            if save_path:
-                from .image import VMImage
-                VMImage.convert_standalone(meta['overlay'], save_path)
-        finally:
-            from .launch import stop_vm_sidecars
+            meta['state'] = 'stopping'
+            _write_metadata(meta['runtime_dir'], meta)
             stop_vm_sidecars(meta)
-            shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
+            if meta.get('save_path'):
+                meta['state'] = 'checkpointing'
+                _write_metadata(meta['runtime_dir'], meta)
+                create_checkpoint(meta)
+                meta['state'] = 'checkpointed'
+                _write_metadata(meta['runtime_dir'], meta)
+            remove_runtime = True
+        finally:
+            stop_vm_sidecars(meta)
+            if remove_runtime:
+                shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
         return
 
     status = run_attached_session(
@@ -348,15 +363,14 @@ def vm_list(ctx):
 @cli.command()
 @click.argument('job_id', type=int)
 @click.option('--save', 'save_path', default=None, metavar='PATH',
-              help='Flatten VM disk (with all changes) into a new qcow2 image.')
+              help='Publish a cold primary-disk checkpoint directory.')
 @click.option('--if-exists', is_flag=True, help='Succeed silently if the VM is already gone.')
 @click.pass_context
 def stop(ctx, job_id, save_path, if_exists):
     """Stop a running VM by JOB_ID.
 
-    Use --save PATH to capture any changes made inside the VM into a new
-    standalone qcow2 image. That image can then be used directly as a
-    template image for future jobs (--vm-save equivalent).
+    Use --save PATH to capture primary-disk changes as a cold checkpoint.
+    A later ``vmocs run --resume PATH`` cold-boots from that state.
     """
     cfg, _ = _load(ctx.obj['config_path'])
     if save_path:

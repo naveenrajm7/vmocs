@@ -32,6 +32,7 @@ class QemuMonitor:
 
         self._wlock = threading.Lock()
         self._current_tag = 1
+        self._closed = threading.Event()
 
         # Pipe used to wake the reader thread on shutdown
         self._stop_r, self._stop_w = os.pipe()
@@ -103,6 +104,8 @@ class QemuMonitor:
 
     def close(self):
         """Signal the reader thread to exit."""
+        self._closed.set()
+        self._drain_callbacks(None)
         try:
             os.write(self._stop_w, b'x')
         except OSError:
@@ -137,15 +140,26 @@ class QemuMonitor:
         """Send a QMP command and block until a reply arrives."""
         result_q = queue.Queue()
         self._exec_async(json_cmd, result_q.put)
-        return result_q.get()
+        try:
+            return result_q.get(timeout=5)
+        except queue.Empty:
+            raise HypervisorError('QMP command timed out')
 
     def _exec_async(self, json_cmd, callback):
         with self._wlock:
+            if self._closed.is_set():
+                callback(None)
+                return
             self._sync_cb.put(callback)
             try:
                 self._sock.sendall(json_cmd.encode('utf-8'))
             except OSError as e:
                 logging.warning('QMP send failed: %s', e)
+                # The reader may already have observed EOF and exited before
+                # this command was queued. Resolve every waiter immediately
+                # instead of leaving lifecycle shutdown blocked forever.
+                self._closed.set()
+                self._drain_callbacks(None)
 
     def _reader_thread(self):
         """Read QMP messages from the socket until stopped."""
@@ -163,6 +177,7 @@ class QemuMonitor:
                 except OSError:
                     raw = None
                 if not raw:
+                    self._closed.set()
                     self._drain_callbacks(None)
                     break
                 self._databuff += dec.decode(raw)

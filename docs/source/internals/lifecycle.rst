@@ -11,7 +11,8 @@ SPANK lifecycle
 ---------------
 
 ``slurm_spank_init``
-   Registers ``--vm-image``, ``--vm-save``, and ``--vm-attach`` in every
+   Registers ``--vm-image``, ``--vm-save``, ``--vm-resume``, and
+   ``--vm-attach`` in every
    context where the plugin is loaded.
 
 ``slurm_spank_init_post_opt``
@@ -80,8 +81,9 @@ Disk ownership
 
 The template's base image is never modified by a normal launch.  vmocs writes
 to a per-job COW overlay and discards it at cleanup unless ``--vm-save`` is
-specified.  Saving occurs after the guest is stopped and flattens the backing
-chain into a standalone qcow2 file.
+specified. Saving occurs after the guest is stopped and publishes the thin
+overlay in an immutable checkpoint directory with a manifest and ``COMPLETE``
+marker.
 
 Template ``extra-disks`` are different: vmocs attaches them directly.  Their
 writes persist independently and they are not included in VM saves or memory

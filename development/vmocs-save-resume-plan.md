@@ -1,7 +1,7 @@
 # Durable VM Save and Resume
 
-Status: proposed architecture
-Date: 2026-09-20
+Status: Stage 1 implemented; Stages 2-5 planned
+Updated: 2026-09-21
 
 ## Goal
 
@@ -18,6 +18,57 @@ The primary contract should be **durable cold resume**: preserve all managed
 persistent VM state and boot it again later. Exact CPU/RAM/device continuation is
 a separate, opt-in **suspended resume** contract because it cannot work for every
 device configuration, especially arbitrary VFIO devices.
+
+## Implementation status and scope
+
+Stage 1 implements the smallest useful Enroot-like workflow:
+
+```text
+vmocs run TEMPLATE --save CHECKPOINT -- agent-command
+vmocs run TEMPLATE --resume CHECKPOINT -- next-agent-command
+
+srun --vm-image=TEMPLATE --vm-save=CHECKPOINT agent-command
+srun --vm-image=TEMPLATE --vm-resume=CHECKPOINT next-agent-command
+```
+
+The first command cleanly stops QEMU and atomically publishes a thin bundle
+containing the primary qcow2 overlay. The second command cold-boots using that
+saved disk as an immutable base and creates a fresh per-job overlay. This makes
+checkpoint generations composable without modifying an earlier checkpoint.
+
+The Stage-1 artifact contains `disk.qcow2`, `manifest.json`, and a `COMPLETE`
+marker. Resume rejects missing/incomplete markers, invalid qcow2 chains, and a
+template-name mismatch. Save intent and checkpoint identity are written to
+`vm.json` before QEMU starts, so the SPANK exit hook can retry a save left by an
+interrupted supervisor. A save error retains the stopped runtime overlay.
+
+Stage 1 captures only writes to the primary guest disk. It intentionally does
+**not** capture RAM, running processes, CPU state, GPU/VFIO state, swtpm state,
+UEFI variables, extra disks, or virtio-fs/host-mounted content. Resume is a
+normal boot with newly created GPU and sidecar connections. Agents must put
+their durable workspace on the primary disk and flush application state before
+exit. Cancellation is best-effort within Slurm's TERM-to-KILL interval; the
+persistent staging/worker design in Stage 3 is required for a hard guarantee.
+
+This is progressive for disk persistence: Stage 2 expands the same cold bundle
+and manifest. Exact continuation of RAM/process/device state is a separate,
+capability-gated feature (Stage 5), not an automatic upgrade of disk resume.
+
+### Stage-1 validation (2026-09-21)
+
+- Python suite: 61 passed, with 3 dependency-gated skips on the development
+  host.
+- SPANK smoke test: built with `-Wall -Werror`; Slurm exposed `--vm-image`,
+  `--vm-save`, `--vm-resume`, and `--vm-attach`.
+- Reference VFIO host normal flow: saved a primary-disk marker, resumed it,
+  recreated rocJitsu/swtpm/virtiofsd, and removed both runtime directories.
+- Cancellation flow: sent `SIGTERM` to QEMU and the attached supervisor while
+  the guest command was still running; the supervisor returned 143, published
+  a complete checkpoint, and the resumed VM recovered the marker. This also
+  found and fixed a QMP-disconnect waiter that could otherwise block cleanup.
+- Physical-device flow: repeated save/resume with the RX 7900 XTX VGA and audio
+  functions (`0000:03:00.0` and `0000:03:00.1`) attached through VFIO; both
+  generations observed the physical GPU and the fresh vfio-user device.
 
 ## Executive decision
 
@@ -70,7 +121,7 @@ agent should write its own durable progress to disk, then exit or request a
 checkpoint. On an uncooperative cancellation, the guarantee is crash-consistent
 storage, not preservation of unflushed application memory.
 
-Cold checkpoints include:
+The complete cold-checkpoint target (Stage 2 and later) includes:
 
 - the primary disk overlay and immutable base-image identity;
 - every disk declared as managed by vmocs;
@@ -107,10 +158,11 @@ QEMU requires matching device topology for migration restore. With the current
 class and QEMU machine version; it should also require the saved vCPU and RAM
 sizes. Cross-version and cross-node compatibility can be widened later.
 
-## Current implementation audit
+## Pre-Stage-1 implementation audit
 
-The repository already has useful pieces, but they do not yet form a durable
-save protocol.
+This table records the behavior that motivated Stage 1. It is retained as
+design history; the attached signal handler, atomic thin bundle, persisted save
+intent, `COMPLETE` validation, and cold resume path are now implemented.
 
 | Area | Current behavior | Problem |
 |---|---|---|
@@ -238,6 +290,17 @@ then compress as a separate restartable export step if desired.
 
 ## Checkpoint bundle
 
+Stage 1 uses the deliberately small layout:
+
+```text
+checkpoint/
+  disk.qcow2       # thin overlay; immutable after publication
+  manifest.json    # scope, backing path, resources, exclusions
+  COMPLETE         # contains checkpoint ID
+```
+
+The future complete-cold/suspended layout is:
+
 Recommended on-disk layout:
 
 ```text
@@ -330,17 +393,20 @@ mechanism.
 
 ## Resume path
 
-Add `vmocs resume CHECKPOINT` and a Slurm `--vm-resume=CHECKPOINT` option.
+Stage 1 uses `vmocs run TEMPLATE --resume CHECKPOINT` and the Slurm
+`--vm-resume=CHECKPOINT` option. Keeping the template explicit supplies the
+device and sidecar configuration and makes the compatibility check obvious.
 
 Cold resume:
 
-1. Verify `COMPLETE`, ownership, hashes, base-image identity, and external
-   dependencies.
+1. Verify `COMPLETE`, the manifest/schema/template, and the qcow2 backing chain.
+   Later stages add ownership, hashes, stable base-image identity, and external
+   dependency checks.
 2. Create a new working overlay on the sealed disk chain (or use the portable
    disk as the new base).
-3. Restore NVRAM and TPM state where present.
-4. Use the saved SSH credential for first contact, then rotate it.
-5. Boot normally and write a new runtime journal. A later save creates a new
+3. Boot with fresh NVRAM, TPM, credentials, and sidecars in Stage 1; Stage 2
+   restores managed persistent NVRAM/TPM state.
+4. Boot normally and write a new runtime journal. A later save creates a new
    checkpoint; never mutate the old one.
 
 Suspended resume:
@@ -352,19 +418,14 @@ Suspended resume:
 5. Fail closed on any mismatch. Do not boot the disk cold unless the user
    explicitly asks to recover that way.
 
-## API migration
+## API decision
 
-The current `--vm-save PATH` means "flatten drive0 to a qcow2." The new feature
-needs a bundle for complete VM state. Preserve compatibility deliberately:
-
-1. Introduce `--vm-save-format=bundle|qcow2` and
-   `--vm-save-mode=cold|suspend`.
-2. During one compatibility release, keep `qcow2` as the default format for
-   existing scripts but emit a notice that it is disk-only. Recommend
-   `--vm-save-format=bundle` for agent workflows.
-3. Make bundle the default in the next incompatible release, or add the clearer
-   `--vm-checkpoint DIR` spelling while retaining `--vm-save PATH.qcow2` as a
-   legacy disk export.
+Stage 1 intentionally changes `--save PATH` / `--vm-save=PATH` from a flat
+qcow2 file to a checkpoint directory and adds `--resume` / `--vm-resume`.
+vmocs is still pre-1.0, and a single bundle contract is clearer for the demo
+and gives later stages a versioned expansion point. A portable flattened qcow2
+will return as an explicit export command/format in Stage 4; it will not be
+confused with a resumable checkpoint.
 
 Whichever spelling is selected, `suspend + qcow2` is invalid because one qcow2
 does not carry all sidecar/external-dependency metadata safely.
@@ -380,28 +441,48 @@ vmocs checkpoint recover CHECKPOINT --cold   # explicit downgrade only
 
 ## Delivery plan
 
-### Phase 1: make cold bundle sealing correct
+### Stage 1: thin primary-disk checkpoint (implemented)
 
-- Add `checkpoint.py` with the journal, state machine, locks, manifest, atomic
-  writes, and seal/validate operations.
-- Add the persistent per-user checkpoint staging directory and place
-  save-owned writable VM state there from launch time.
-- Record save intent before launch and make runtime cleanup checkpoint-aware.
-- Replace `subprocess.call(ssh)` with a pollable child so the supervisor can
-  react to signals.
-- Install termination handlers before launch and centralize all QMP lifecycle
-  actions in the supervisor.
-- Stop/flush QEMU before touching its disk files.
-- Include NVRAM, TPM, credentials, and explicit external-disk metadata.
-- Reject `unsafe` cache and unsupported save layouts during preflight.
-- Add cold resume from a sealed bundle.
-- Change SPANK cleanup to idempotent reconciliation.
+- Persist save path and checkpoint ID before QEMU launch.
+- Handle `SIGTERM`/`SIGINT` in attached sessions without abandoning cleanup.
+- Stop QEMU before reading the overlay and retain runtime state on failure.
+- Copy and validate the thin overlay in a private partial directory, then
+  atomically publish `manifest.json`, `disk.qcow2`, and `COMPLETE`.
+- Resume through a fresh overlay without mutating the checkpoint.
+- Add CLI and SPANK save/resume options plus a real-QEMU save/resume harness.
 
-Success criterion: after normal exit, `scancel`, or wall-time termination, the
-result is either a bootable `COMPLETE` cold checkpoint or a retained,
-diagnosable failed source—never a silently truncated image.
+Success criterion: normal save/resume preserves a guest primary-disk marker,
+recreates GPU-like vfio-user sidecars, and cleans both runtime directories.
 
-### Phase 2: portable export worker
+### Stage 2: complete managed cold bundle
+
+- Move save-owned writable state into persistent staging before launch.
+- Add the full journal/state machine, per-checkpoint lock, ownership checks,
+  stable base-image identity, hashes, and idempotent reconciliation.
+- Capture managed extra-disk overlays, UEFI variables, swtpm state, and the
+  first-resume SSH credential; explicitly fingerprint external dependencies.
+- Require flush-honoring disk-cache modes for save-enabled jobs.
+- Validate the resolved template and device topology, not only its name.
+
+Success criterion: all vmocs-managed persistent state resumes together, and an
+incompatible or incomplete bundle fails before QEMU starts.
+
+### Stage 3: cancellation and crash recovery
+
+- Put staging/reconciliation in a root-owned node service outside the Slurm job
+  cgroup, with peer-credential authorization and per-user retention.
+- Make signal handling cover boot as well as the attached session and budget
+  clean-stop/seal work against `KillWait`.
+- Add `slurm_spank_task_exit` recovery notification; keep `spank_exit` as an
+  idempotent fallback that never destroys a pending checkpoint.
+- Recover after supervisor `SIGKILL`, node-service restart, and partially
+  completed publication; expose status and retry commands.
+
+Success criterion: after normal exit, `scancel`, wall-time termination, or
+supervisor death, there is either a bootable `COMPLETE` checkpoint or retained,
+diagnosable source state—never a plausible truncated artifact.
+
+### Stage 4: portable export worker
 
 - Add the node-local queue/service and Unix-socket authorization.
 - Export sealed disk chains to standalone qcow2 using partial names.
@@ -412,7 +493,7 @@ Success criterion: cancel during any second of a multi-minute Windows image
 conversion; the worker later publishes one valid standalone image and the job's
 runtime source is not lost.
 
-### Phase 3: suspended checkpoints
+### Stage 5: suspended full-VM checkpoints
 
 - Add QMP block flush and direct file migration helpers.
 - Define the strict compatibility manifest/fingerprint.
@@ -425,7 +506,7 @@ Success criterion: a software-only test VM resumes an in-memory counter/process
 at the exact saved point; each unsupported device configuration fails before the
 job starts with a precise reason.
 
-### Phase 4: agent workflow polish
+### Stage 6: agent workflow polish
 
 - Add an optional guest control channel/guest agent for sync, progress, and
   explicit save requests.

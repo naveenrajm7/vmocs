@@ -110,7 +110,8 @@ vmocs stop <job_id>
 
 Sends QMP `system_powerdown` (ACPI soft-off) and waits up to 60 s for the guest to
 flush filesystems cleanly, then falls back to SIGTERM → SIGKILL. Removes the runtime
-directory and (if `--save` was given) converts the COW overlay to a standalone qcow2.
+directory and (if `--save` was given) publishes the primary-disk overlay as a
+thin cold-checkpoint bundle.
 
 After QEMU exits, vmocs explicitly sends TERM and then KILL if needed to every
 verified persisted sidecar process group. PID start time and host boot ID checks
@@ -124,7 +125,7 @@ base image is never written. The overlay accumulates all writes made inside the 
 - **Across reboots:** the overlay persists. Data written before a reboot is visible
   after the reboot.
 - **Across `vmocs stop`:** the overlay is deleted with the runtime directory. Changes
-  are lost unless `vmocs stop --save <path>` is used to flatten the overlay into a new
-  standalone qcow2 first.
+  are lost unless `vmocs stop --save <path>` publishes the overlay as a cold
+  checkpoint bundle first.
 - **Across `vmocs launch` runs:** each launch creates a fresh overlay from the same
   base image. Two separate job runs start from identical state.

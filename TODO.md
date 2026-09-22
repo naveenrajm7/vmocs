@@ -61,7 +61,7 @@ vBIOS file path. Discrete GPUs load vBIOS from their own ROM; APUs do not have o
 and QEMU must supply it:
 ```yaml
 pci-roms:
-  1002:1586: /cluster/vmocs/roms/vbios_1002_1586.bin
+  1002:1586: /var/lib/vmocs/roms/vbios_1002_1586.bin
 ```
 
 **Known issues / remaining work:**

@@ -36,6 +36,8 @@ class Config:
         self.runtime_dir = data.get('runtime-dir', '/var/run/vmocs')
         self.gpu_devices = data.get('gpu-devices', [])
         self.network = data.get('network', {})
+        if not isinstance(self.network, dict):
+            raise InvalidConfigError("'network' must be a mapping")
         self.sidecars = data.get('sidecars', {})
         if not isinstance(self.sidecars, dict):
             raise InvalidConfigError("'sidecars' must be a mapping")

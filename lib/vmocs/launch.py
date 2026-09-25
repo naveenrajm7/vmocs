@@ -228,6 +228,15 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     qmp_socket = os.path.join(runtime_dir, 'qmp.sock')
     qemu_bin = template.qemu_bin or cfg.qemu_bin
 
+    # Templates refine the site defaults without inheriting the management
+    # port allocator, which is consumed by vmocs rather than QEMU.
+    network = dict(cfg.network or {})
+    network.pop('ssh-port-range', None)
+    template_network = template.network or {}
+    if not isinstance(template_network, dict):
+        raise HypervisorError("template 'network' must be a mapping")
+    network.update(template_network)
+
     # UEFI NVRAM: copy vars template into runtime_dir so each job gets an isolated store
     firmware_vars = None
     if template.firmware:
@@ -260,6 +269,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         pci_devices=pci_devices,
         extra_disks=template.extra_disks or [],
         sidecar_plans=sidecar_plans,
+        network=network,
         supervised=supervised,
     )
 
@@ -278,6 +288,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'template': template.name,
         'cores': cores,
         'memory_mb': memory_mb,
+        'network': network,
         'pci_devices': list(pci_devices),
         'save_path': save_path,
         'resume_path': resume_path,

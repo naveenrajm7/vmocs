@@ -5,7 +5,7 @@ templates: /etc/vmocs/templates.yaml
 gpu-devices: []
 
 network:
-  mode: user
+  mode: user  # SLIRP; QEMU 10.1+ also supports mode: passt when installed
   ssh-port-range: [60222, 60322]
 
 # Host processes started and owned for the lifetime of a VM. Templates select

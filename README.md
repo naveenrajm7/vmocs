@@ -63,6 +63,7 @@ qemu-bin: /usr/bin/qemu-system-x86_64
 runtime-dir: /tmp/vmocs          # per-job dirs created here
 
 network:
+  mode: user                     # QEMU user-mode NAT
   ssh-port-range: [60222, 60322] # ports scanned in order, first free wins
 ```
 
@@ -82,6 +83,42 @@ debian-vagrant:
   ssh-user: vagrant
   ssh-timeout: 120
 ```
+
+Network isolation is selected per template.  QEMU's `restrict=on` mode
+blocks guest-initiated access to both the host and outside networks while
+leaving vmocs's loopback-only SSH management forward available:
+
+```yaml
+secure-agent:
+  inherits: base-ubuntu
+  network:
+    restrict: true
+    ipv6: false
+```
+
+Selected TCP destinations can be reintroduced with `network.guestfwd`. See
+`templates.yaml(5)` for the configuration and the boundary between QEMU's
+native forwarding controls and transparent IP/domain allowlisting.
+
+QEMU 10.1 and newer can instead use its native `passt` backend (the `passt`
+executable must be installed). vmocs maps its private SSH channel into the
+backend and accepts explicit TCP/UDP port maps:
+
+```yaml
+fast-network:
+  inherits: base-ubuntu
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  network:
+    mode: passt
+    ipv6: false
+    tcp-ports:
+      - 8080:80
+```
+
+`passt` provides unprivileged, higher-performance connectivity and stronger
+process separation than in-process SLIRP, but it is not a destination
+allowlist. Use `mode: user` with `restrict: true` for the constrained profiles
+above.
 
 ### Boot mode contract
 

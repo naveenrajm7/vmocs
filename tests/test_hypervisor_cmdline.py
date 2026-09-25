@@ -111,6 +111,169 @@ def test_build_qemu_cmdline_structure(tmp_path, cow_img):
     assert 'cdrom0' not in ' '.join(cmd)
 
 
+def test_restricted_network_preserves_ssh_and_explicit_guest_forward(
+        tmp_path, cow_img):
+    runtime = str(tmp_path / 'restricted-network')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        network={
+            'mode': 'user',
+            'restrict': True,
+            'ipv6': False,
+            'guestfwd': [
+                'tcp:10.0.2.100:443-cmd:/usr/bin/nc api.example.com 443',
+            ],
+        },
+    )
+    netdev = cmd[cmd.index('-netdev') + 1]
+    assert 'restrict=on' in netdev
+    assert 'ipv6=off' in netdev
+    assert 'hostfwd=tcp:127.0.0.1:60222-:22' in netdev
+    assert ('guestfwd=tcp:10.0.2.100:443-'
+            'cmd:/usr/bin/nc api.example.com 443') in netdev
+
+
+def test_network_options_and_host_forward_are_passed_to_qemu(tmp_path, cow_img):
+    runtime = str(tmp_path / 'network-options')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        network={
+            'options': ['net=10.55.0.0/24', 'dns=10.55.0.3'],
+            'hostfwd': ['tcp:127.0.0.1:8080-:80'],
+        },
+    )
+    netdev = cmd[cmd.index('-netdev') + 1]
+    assert 'net=10.55.0.0/24' in netdev
+    assert 'dns=10.55.0.3' in netdev
+    assert 'hostfwd=tcp:127.0.0.1:8080-:80' in netdev
+
+
+def test_passt_network_preserves_ssh_and_explicit_forwards(tmp_path, cow_img):
+    runtime = str(tmp_path / 'passt-network')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/opt/qemu-vfio/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        network={
+            'mode': 'passt',
+            'ipv6': False,
+            'bind': '0.0.0.0',
+            'tcp-ports': ['8080:80'],
+            'udp-ports': ['5353:53'],
+            'options': ['mtu=1500'],
+        },
+    )
+    netdev = cmd[cmd.index('-netdev') + 1]
+    assert netdev.startswith('passt,id=net0,')
+    assert 'ipv6=off' in netdev
+    assert 'mtu=1500' in netdev
+    assert 'tcp-ports=0.0.0.0/60222:22,tcp-ports=8080:80' in netdev
+    assert 'udp-ports=0.0.0.0/5353:53' in netdev
+
+
+def test_passt_defaults_to_loopback_ssh_and_no_udp(tmp_path, cow_img):
+    runtime = str(tmp_path / 'passt-defaults')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/opt/qemu-vfio/bin/qemu-system-x86_64',
+        template=FakeTemplate(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+        network={'mode': 'passt'},
+    )
+    netdev = cmd[cmd.index('-netdev') + 1]
+    assert 'tcp-ports=127.0.0.1/60222:22' in netdev
+    assert 'udp-ports=none' in netdev
+
+
+def test_legacy_extra_host_forward_remains_supported(tmp_path, cow_img):
+    class TemplateWithLegacyForward(FakeTemplate):
+        extra_hostfwd = ['tcp:127.0.0.1:3389-:3389']
+
+    runtime = str(tmp_path / 'legacy-hostfwd')
+    os.makedirs(runtime)
+    cmd = build_qemu_cmdline(
+        qemu_bin='/usr/bin/qemu-system-x86_64',
+        template=TemplateWithLegacyForward(),
+        cores=2,
+        memory_mb=1024,
+        disk_path=cow_img,
+        runtime_dir=runtime,
+        ssh_port=60222,
+        qmp_socket=os.path.join(runtime, 'qmp.sock'),
+    )
+
+    netdev = cmd[cmd.index('-netdev') + 1]
+    assert 'hostfwd=tcp:127.0.0.1:3389-:3389' in netdev
+
+
+@pytest.mark.parametrize('network,match', [
+    ('restricted', "template 'network' must be a mapping"),
+    ({'mode': 'bridge'}, 'unsupported network mode'),
+    ({'restrct': True}, 'unknown network setting'),
+    ({'restrict': 'yes'}, 'network.restrict must be true or false'),
+    ({'options': 'ipv6=off'}, 'network.options must be a list of strings'),
+    ({'restrict': True, 'options': ['restrict=off']},
+     'network.options cannot override'),
+    ({'guestfwd': 'tcp:10.0.2.100:443-tcp:example.com:443'},
+     'network.guestfwd must be a list of strings'),
+    ({'guestfwd': ['tcp:10.0.2.100:443-udp:example.com:443']},
+     'network.guestfwd entries must forward to tcp or cmd'),
+    ({'hostfwd': ['tcp:127.0.0.1:8080-:80,restrict=off']},
+     'network.hostfwd entries cannot contain commas'),
+    ({'mode': 'passt', 'restrict': True},
+     "network mode 'passt' does not support setting"),
+    ({'mode': 'passt', 'bind': '127.0.0.1/8'},
+     'network.bind must be a non-empty address'),
+    ({'mode': 'passt', 'tcp-ports': ['8080:80,8443:443']},
+     'network.tcp-ports entries cannot contain commas'),
+    ({'mode': 'passt', 'options': ['tcp-ports=all']},
+     'network.options cannot override'),
+])
+def test_invalid_network_configuration_fails_early(
+        tmp_path, cow_img, network, match):
+    runtime = str(tmp_path / ('invalid-' + str(abs(hash(match)))))
+    os.makedirs(runtime)
+    with pytest.raises(HypervisorError, match=match):
+        build_qemu_cmdline(
+            qemu_bin='/usr/bin/qemu-system-x86_64',
+            template=FakeTemplate(),
+            cores=2,
+            memory_mb=1024,
+            disk_path=cow_img,
+            runtime_dir=runtime,
+            ssh_port=60222,
+            qmp_socket=os.path.join(runtime, 'qmp.sock'),
+            network=network,
+        )
+
+
 def test_build_qemu_cmdline_with_cloud_init_iso(tmp_path, cow_img):
     runtime = str(tmp_path / 'runtime2')
     os.makedirs(runtime)

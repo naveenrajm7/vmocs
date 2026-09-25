@@ -43,7 +43,8 @@ TEMPLATE_SETTINGS = {
     'ssh-key':                (False, None,    True),   # private key path when insert-key=false
     'pci-root-port':          (False, False,   True),   # True = each PCI passthrough device gets its own pcie-root-port (required for AMD GPUs)
     'extra-disks':            (False, [],      True),   # list of persistent disk dicts: [{file, device, cache, serial}]
-    'extra-hostfwd':          (False, [],      True),   # extra QEMU hostfwd entries, e.g. ['tcp::3389-:3389']
+    'extra-hostfwd':          (False, [],      True),   # legacy hostfwd list; prefer network.hostfwd
+    'network':                (False, {},      True),   # per-template QEMU network policy
     'pci-roms':               (False, {},      True),   # vendor:device → romfile path, applied only to display-class (0x03xx) devices
     'inherits':               (False, None,    False),
     'description':   (False, '',         False),
@@ -113,6 +114,10 @@ class Template:
 
     def validate(self, all_templates):
         """Resolve and cache parent; check inheritance chain is acyclic."""
+        if ('network' in self.settings
+                and not isinstance(self.settings['network'], dict)):
+            raise InvalidConfigError(
+                f"template '{self.name}' setting 'network' must be a mapping")
         self._parent = None
         parent_name = self.settings.get('inherits')
         if parent_name:

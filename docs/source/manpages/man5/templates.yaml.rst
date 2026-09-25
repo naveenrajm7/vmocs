@@ -214,13 +214,118 @@ Fields
 
    List of extra QEMU ``hostfwd`` entries appended to the user-mode network
    device.  Each entry uses the QEMU syntax
-   ``protocol::hostport-:guestport``.  Default: ``[]``.
+   ``protocol:hostaddr:hostport-:guestport``.  This legacy field is equivalent
+   to ``network.hostfwd``.  Bind sensitive services to ``127.0.0.1``; an empty
+   host address exposes the port on every host interface.  Default: ``[]``.
 
    Example::
 
       extra-hostfwd:
-        - tcp::3389-:3389
-        - tcp::5985-:5985
+        - tcp:127.0.0.1:3389-:3389
+        - tcp:127.0.0.1:5985-:5985
+
+.. describe:: network
+
+   Per-template QEMU network policy.  The mapping is merged over the
+   global ``network`` defaults from ``vmocs.yaml``.  Supported fields are:
+
+   ``mode``
+     ``user`` selects QEMU's SLIRP backend.  ``passt`` selects QEMU's native
+     passt backend, available since QEMU 10.1, and requires the ``passt``
+     executable on the compute node.  vmocs creates the appropriate SSH
+     forward for either backend.
+
+   ``restrict``
+     Boolean.  When true, QEMU prevents the guest from contacting the host or
+     routing packets to outside networks.  Explicit ``hostfwd`` and
+     ``guestfwd`` rules remain active.  This is the deny-by-default mode for an
+     agent sandbox.
+
+   ``ipv4``, ``ipv6``
+     Booleans mapped to QEMU's user-network protocol switches.  Explicitly
+     disable an unused protocol so it cannot become an alternate egress path.
+
+   ``hostfwd``
+     List of QEMU inbound forwarding rules.  vmocs independently adds a
+     loopback-only SSH rule for guest management.  Bind additional rules to
+     ``127.0.0.1`` unless remote access is intentional.
+
+   ``guestfwd``
+     List of QEMU outbound TCP forwarding rules.  With ``restrict: true``,
+     these rules can expose selected host/IP and port pairs at synthetic guest
+     addresses.  They are explicit conduits, not a transparent firewall.
+     Both QEMU's persistent ``tcp:`` chardev and per-connection ``cmd:`` forms
+     are supported.  The latter can run a fixed connector such as
+     ``/usr/bin/nc example.com 443`` and is appropriate only in
+     administrator-controlled templates.
+
+   ``options``
+     List of additional QEMU ``-netdev`` options, without the backend and
+     ``id=net0`` prefix.  For ``user``, this exposes features such as ``net=``,
+     ``host=``, ``dns=``, ``dnssearch=``, and ``dhcpstart=``.  For ``passt``,
+     it exposes QEMU's passt properties such as ``mtu=``, ``dns=``,
+     ``outbound-if4=``, and protocol toggles.  Keys managed by dedicated vmocs
+     fields cannot be overridden here.
+
+   The following fields apply only to ``mode: passt``:
+
+   ``bind``
+     Address, or ``%interface``, shared by passt's inbound listeners.  Default
+     is ``127.0.0.1``, keeping the management SSH port private.  Set
+     ``0.0.0.0`` only when remote inbound access is intentional.
+
+   ``tcp-ports``, ``udp-ports``
+     Lists of passt port specifications, such as ``8080:80``.  vmocs prepends
+     its dynamic host-port-to-guest-22 TCP mapping.  UDP defaults to ``none``
+     so passt does not implicitly open a UDP listener matching that SSH port.
+     All entries use the single address from ``bind``.
+
+   Deny-by-default agent template::
+
+      secure-agent:
+        inherits: base-ubuntu
+        network:
+          restrict: true
+          ipv6: false
+
+   Restricted template with one HTTPS destination::
+
+      api-agent:
+        inherits: secure-agent
+        network:
+          restrict: true
+          ipv6: false
+          guestfwd:
+            - tcp:10.0.2.100:443-cmd:/usr/bin/nc api.example.com 443
+
+   The guest reaches that endpoint through ``10.0.2.100:443``.  For HTTPS,
+   preserve the hostname used for TLS, for example with
+   ``curl --resolve api.example.com:443:10.0.2.100``.  QEMU user networking
+   cannot express transparent domain or CIDR allowlists; use a filtered TAP or
+   bridge, or an egress proxy, when policy must cover arbitrary addresses,
+   protocols, or changing DNS results.
+
+   This constrains code running inside the guest; it is not a policy boundary
+   against an untrusted template author.  Administrators must control template
+   fields such as ``custom-args`` and PCI passthrough, either of which can add
+   another network path.  Separately configured listeners such as VNC are not
+   governed by this user-network policy either.
+
+   Native passt backend example (QEMU 10.1 or newer)::
+
+      passt-agent:
+        inherits: base-ubuntu
+        qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+        network:
+          mode: passt
+          ipv6: false
+          tcp-ports:
+            - 8080:80
+
+   Passt runs outside the QEMU process and provides unprivileged outbound and
+   explicit inbound connectivity.  It does not implement destination
+   allowlisting; use the ``user`` backend's ``restrict`` and ``guestfwd``
+   controls for deny-by-default templates.
 
 .. describe:: pci-roms
 

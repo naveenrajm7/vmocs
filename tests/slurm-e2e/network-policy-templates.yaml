@@ -1,0 +1,42 @@
+# Temporary user templates for the network-policy Slurm acceptance test.
+# The unrestricted profile deliberately exposes one test-only HTTP port so
+# both directions can be exercised while the job is alive.
+network-unrestricted-e2e:
+  inherits: base-ubuntu
+  description: Unrestricted SLIRP egress plus one explicit inbound test port
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  network:
+    hostfwd:
+      - tcp:0.0.0.0:61080-:18080
+
+network-restricted-e2e:
+  inherits: base-ubuntu
+  description: QEMU user networking with all guest egress denied
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  network:
+    restrict: true
+    ipv6: false
+
+network-allow-example-e2e:
+  inherits: base-ubuntu
+  description: Restricted guest with only example.com HTTP and HTTPS forwarded
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  network:
+    restrict: true
+    ipv6: false
+    # The per-connection command form handles repeated TLS connections on
+    # QEMU 8.2; its persistent tcp: chardev form stalls during TLS setup.
+    guestfwd:
+      - tcp:10.0.2.100:80-cmd:/usr/bin/nc example.com 80
+      - tcp:10.0.2.100:443-cmd:/usr/bin/nc example.com 443
+
+network-passt-e2e:
+  inherits: base-ubuntu
+  description: QEMU 11 native passt backend with outbound and inbound access
+  qemu-bin: /opt/qemu-vfio/bin/qemu-system-x86_64
+  network:
+    mode: passt
+    ipv6: false
+    bind: 0.0.0.0
+    tcp-ports:
+      - 61081:18080

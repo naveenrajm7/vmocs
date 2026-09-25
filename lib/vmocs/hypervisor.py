@@ -242,6 +242,154 @@ def _find_free_port(port_range):
     raise HypervisorError(f'no free port in range {lo}-{hi}')
 
 
+def _validated_network_mapping(network):
+    if network is None:
+        network = {}
+    if not isinstance(network, dict):
+        raise HypervisorError("template 'network' must be a mapping")
+    return network
+
+
+def _network_string_list(network, name, allow_commas=False):
+    values = network.get(name, [])
+    if not isinstance(values, list) or not all(
+            isinstance(value, str) and value for value in values):
+        raise HypervisorError(f'network.{name} must be a list of strings')
+    if not allow_commas and any(',' in value for value in values):
+        raise HypervisorError(f'network.{name} entries cannot contain commas')
+    return values
+
+
+def _network_bool_options(network, names):
+    options = []
+    for name in names:
+        if name not in network:
+            continue
+        value = network[name]
+        if not isinstance(value, bool):
+            raise HypervisorError(f"network.{name} must be true or false")
+        options.append(f'{name}={"on" if value else "off"}')
+    return options
+
+
+def _raw_network_options(network, managed_options):
+    values = _network_string_list(network, 'options', allow_commas=True)
+    for value in values:
+        if any(part.startswith(managed_options) for part in value.split(',')):
+            raise HypervisorError(
+                'network.options cannot override ' +
+                ', '.join(name.rstrip('=') for name in managed_options))
+    return values
+
+
+def _user_network_cmdline(network, ssh_port, extra_hostfwd=()):
+    """Build the managed QEMU SLIRP backend and guest NIC arguments."""
+    network = _validated_network_mapping(network)
+
+    supported = {
+        'mode', 'restrict', 'ipv4', 'ipv6', 'options', 'hostfwd', 'guestfwd',
+    }
+    unknown = sorted(set(network) - supported)
+    if unknown:
+        raise HypervisorError(
+            'unknown network setting(s): ' + ', '.join(unknown))
+
+    options = ['user', 'id=net0']
+    options.extend(_network_bool_options(
+        network, ('restrict', 'ipv4', 'ipv6')))
+    managed_options = (
+        'id=', 'restrict=', 'ipv4=', 'ipv6=', 'hostfwd=', 'guestfwd=',
+    )
+    options.extend(_raw_network_options(network, managed_options))
+
+    # vmocs always needs a private management path into the guest. QEMU's
+    # restrict=on explicitly preserves configured forwarding rules.
+    options.append(f'hostfwd=tcp:127.0.0.1:{ssh_port}-:22')
+
+    hostfwds = _network_string_list(network, 'hostfwd')
+    guestfwds = _network_string_list(network, 'guestfwd')
+    for name, values in (('hostfwd', hostfwds),
+                         ('guestfwd', guestfwds),
+                         ('extra-hostfwd', extra_hostfwd or [])):
+        if not isinstance(values, list) or not all(
+                isinstance(value, str) and value for value in values):
+            raise HypervisorError(f'network.{name} must be a list of strings')
+        if any(',' in value for value in values):
+            raise HypervisorError(f'network.{name} entries cannot contain commas')
+        if name == 'guestfwd' and any(
+                '-tcp:' not in value and '-cmd:' not in value
+                for value in values):
+            raise HypervisorError(
+                'network.guestfwd entries must forward to tcp or cmd')
+        key = 'hostfwd' if name == 'extra-hostfwd' else name
+        options.extend(f'{key}={value}' for value in values)
+
+    return [
+        '-netdev', ','.join(options),
+        '-device', 'virtio-net-pci,netdev=net0',
+    ]
+
+
+def _passt_network_cmdline(network, ssh_port, extra_hostfwd=()):
+    """Build QEMU's native passt backend (available since QEMU 10.1)."""
+    network = _validated_network_mapping(network)
+    supported = {
+        'mode', 'ipv4', 'ipv6', 'options', 'bind', 'tcp-ports', 'udp-ports',
+    }
+    unknown = sorted(set(network) - supported)
+    if unknown:
+        raise HypervisorError(
+            "network mode 'passt' does not support setting(s): " +
+            ', '.join(unknown))
+    if extra_hostfwd:
+        raise HypervisorError(
+            "network mode 'passt' cannot use legacy extra-hostfwd; use "
+            'network.tcp-ports')
+
+    bind = network.get('bind', '127.0.0.1')
+    if not isinstance(bind, str) or not bind or ',' in bind or '/' in bind:
+        raise HypervisorError(
+            'network.bind must be a non-empty address/interface without '
+            "',' or '/'")
+
+    tcp_ports = _network_string_list(network, 'tcp-ports')
+    udp_ports = _network_string_list(network, 'udp-ports')
+    options = ['passt', 'id=net0']
+    options.extend(_network_bool_options(network, ('ipv4', 'ipv6')))
+    options.extend(_raw_network_options(
+        network, ('id=', 'ipv4=', 'ipv6=', 'tcp-ports=', 'udp-ports=')))
+
+    # All passt forwards share one bind address. Keep the vmocs management
+    # port private by default while allowing templates to opt into 0.0.0.0.
+    options.append(f'tcp-ports={bind}/{ssh_port}:22')
+    options.extend(f'tcp-ports={value}' for value in tcp_ports)
+
+    # passt otherwise mirrors TCP forward port numbers to UDP implicitly.
+    # Be explicit so the management TCP port never creates an unwanted UDP
+    # listener. A template can opt into UDP forwards independently.
+    if udp_ports:
+        options.append(f'udp-ports={bind}/{udp_ports[0]}')
+        options.extend(
+            f'udp-ports={value}' for value in udp_ports[1:])
+    else:
+        options.append('udp-ports=none')
+
+    return [
+        '-netdev', ','.join(options),
+        '-device', 'virtio-net-pci,netdev=net0',
+    ]
+
+
+def _network_cmdline(network, ssh_port, extra_hostfwd=()):
+    network = _validated_network_mapping(network)
+    mode = network.get('mode', 'user')
+    if mode == 'user':
+        return _user_network_cmdline(network, ssh_port, extra_hostfwd)
+    if mode == 'passt':
+        return _passt_network_cmdline(network, ssh_port, extra_hostfwd)
+    raise HypervisorError(f'unsupported network mode: {mode!r}')
+
+
 # ---------------------------------------------------------------------------
 # Main QEMU cmdline builder
 # ---------------------------------------------------------------------------
@@ -255,6 +403,7 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        pci_devices=(),
                        extra_disks=(),
                        sidecar_plans=(),
+                       network=None,
                        supervised=False):
     """Build the full QEMU command line list.
 
@@ -269,6 +418,7 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
         qmp_socket:     path for QMP Unix socket
         cloud_init_iso: path to cloud-init ISO, or None for vagrant boot mode
         snapshot_mem:   path to lzop-compressed memory snapshot, or None
+        network:        merged global/template QEMU network policy
 
     Adapted from pcocc Hypervisor.py:1328-1646.
     """
@@ -371,11 +521,12 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # CPU topology
     cmd += ['-smp', f'threads=1,cores=1,sockets={cores}']
 
-    # User-mode networking with SSH port forward and any extra hostfwds
-    extra_fwds = ''.join(f',hostfwd={fwd}' for fwd in (template.extra_hostfwd or []))
-    cmd += ['-netdev',
-            f'user,id=net0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22{extra_fwds}']
-    cmd += ['-device', 'virtio-net-pci,netdev=net0']
+    # Unprivileged networking with a managed SSH path. The global defaults and
+    # per-template policy are merged by the launcher.
+    if network is None:
+        network = getattr(template, 'network', {})
+    cmd += _network_cmdline(
+        network, ssh_port, getattr(template, 'extra_hostfwd', []))
 
     # Mount points
     if mount_points:

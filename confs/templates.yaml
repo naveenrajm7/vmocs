@@ -10,6 +10,15 @@ base-ubuntu:
   ssh-user: ubuntu
   ssh-timeout: 180
 
+# Deny guest-initiated access to the host and outside networks.  The vmocs
+# loopback-only SSH forward remains available for session management.
+secure-agent:
+  inherits: base-ubuntu
+  description: Isolated agent VM with QEMU user-network egress disabled
+  network:
+    restrict: true
+    ipv6: false
+
 test-extra-disk:
   inherits: base-ubuntu
   extra-disks:
@@ -63,9 +72,10 @@ windows-packer:
   insert-key: false
   ssh-key: /home/user/.ssh/id_ed25519
   pci-root-port: true
-  extra-hostfwd:
-    - tcp::3389-:3389
-    - tcp::5985-:5985
+  network:
+    hostfwd:
+      - tcp:127.0.0.1:3389-:3389
+      - tcp:127.0.0.1:5985-:5985
   mount-points:
     workspace:
       path: /home/user

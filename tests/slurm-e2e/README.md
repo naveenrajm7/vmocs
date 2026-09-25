@@ -51,6 +51,31 @@ The second command terminates rocJitsu after the VM reaches `running` and
 asserts that vmocs returns a failure and removes QEMU, the remaining sidecars,
 and runtime state.
 
+Network-policy acceptance templates are provided in
+`network-policy-templates.yaml`.  Install them temporarily as the test user's
+`~/.vmocs/templates.yaml` and exercise these profiles through `srun`:
+
+- `network-unrestricted-e2e` provides normal SLIRP egress and an intentional
+  wildcard host forward from TCP 61080 to guest TCP 18080 for inbound testing.
+- `network-restricted-e2e` uses `restrict=on,ipv6=off`; both DNS-based and
+  direct-IP egress attempts must fail.
+- `network-allow-example-e2e` keeps the restricted base policy and maps only
+  synthetic guest address `10.0.2.100` to fixed `nc` connectors for
+  `example.com` HTTP/HTTPS.  Use curl's `--resolve` option so the TLS hostname
+  is preserved.  Other direct-IP HTTPS attempts must still fail.
+- `network-passt-e2e` exercises QEMU 11's native passt backend, outbound
+  connectivity, the private management forward, and an intentional wildcard
+  TCP 61081 to guest TCP 18080 inbound mapping. The compute node must have the
+  `passt` executable installed.
+
+All four acceptance profiles select QEMU 11 at
+`/opt/qemu-vfio/bin/qemu-system-x86_64`; the first three intentionally retain
+SLIRP so the security-policy behavior is tested on the latest QEMU too.
+
+The `cmd:` connectors execute on the host as the job user and therefore belong
+only in administrator-controlled templates.  The wildcard inbound rule is
+test-only and must not be left installed after the acceptance run.
+
 For Slurm, install `target-templates.yaml` as the test user's
 `~/.vmocs/templates.yaml`, copy `local.conf.example` to the ignored
 `local.conf`, then run from a login/controller host:

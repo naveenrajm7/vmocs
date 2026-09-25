@@ -358,13 +358,112 @@ for AMD GPUs and any device sensitive to PCIe topology.</p>
 <span class="sig-name descname"><span class="pre">extra-hostfwd</span></span></dt>
 <dd><p>List of extra QEMU <code class="docutils literal notranslate"><span class="pre">hostfwd</span></code> entries appended to the user-mode network
 device.  Each entry uses the QEMU syntax
-<code class="docutils literal notranslate"><span class="pre">protocol::hostport-:guestport</span></code>.  Default: <code class="docutils literal notranslate"><span class="pre">[]</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">protocol:hostaddr:hostport-:guestport</span></code>.  This legacy field is equivalent
+to <code class="docutils literal notranslate"><span class="pre">network.hostfwd</span></code>.  Bind sensitive services to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>; an empty
+host address exposes the port on every host interface.  Default: <code class="docutils literal notranslate"><span class="pre">[]</span></code>.</p>
 <p>Example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">extra</span><span class="o">-</span><span class="n">hostfwd</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">3389</span><span class="o">-</span><span class="p">:</span><span class="mi">3389</span>
-  <span class="o">-</span> <span class="n">tcp</span><span class="p">::</span><span class="mi">5985</span><span class="o">-</span><span class="p">:</span><span class="mi">5985</span>
+  <span class="o">-</span> <span class="n">tcp</span><span class="p">:</span><span class="mf">127.0.0.1</span><span class="p">:</span><span class="mi">3389</span><span class="o">-</span><span class="p">:</span><span class="mi">3389</span>
+  <span class="o">-</span> <span class="n">tcp</span><span class="p">:</span><span class="mf">127.0.0.1</span><span class="p">:</span><span class="mi">5985</span><span class="o">-</span><span class="p">:</span><span class="mi">5985</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">network</span></span></dt>
+<dd><p>Per-template QEMU network policy.  The mapping is merged over the
+global <code class="docutils literal notranslate"><span class="pre">network</span></code> defaults from <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>.  Supported fields are:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">user</span></code> selects QEMU's SLIRP backend.  <code class="docutils literal notranslate"><span class="pre">passt</span></code> selects QEMU's native
+passt backend, available since QEMU 10.1, and requires the <code class="docutils literal notranslate"><span class="pre">passt</span></code>
+executable on the compute node.  vmocs creates the appropriate SSH
+forward for either backend.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">restrict</span></code></dt><dd><p>Boolean.  When true, QEMU prevents the guest from contacting the host or
+routing packets to outside networks.  Explicit <code class="docutils literal notranslate"><span class="pre">hostfwd</span></code> and
+<code class="docutils literal notranslate"><span class="pre">guestfwd</span></code> rules remain active.  This is the deny-by-default mode for an
+agent sandbox.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ipv4</span></code>, <code class="docutils literal notranslate"><span class="pre">ipv6</span></code></dt><dd><p>Booleans mapped to QEMU's user-network protocol switches.  Explicitly
+disable an unused protocol so it cannot become an alternate egress path.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">hostfwd</span></code></dt><dd><p>List of QEMU inbound forwarding rules.  vmocs independently adds a
+loopback-only SSH rule for guest management.  Bind additional rules to
+<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> unless remote access is intentional.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">guestfwd</span></code></dt><dd><p>List of QEMU outbound TCP forwarding rules.  With <code class="docutils literal notranslate"><span class="pre">restrict:</span> <span class="pre">true</span></code>,
+these rules can expose selected host/IP and port pairs at synthetic guest
+addresses.  They are explicit conduits, not a transparent firewall.
+Both QEMU's persistent <code class="docutils literal notranslate"><span class="pre">tcp:</span></code> chardev and per-connection <code class="docutils literal notranslate"><span class="pre">cmd:</span></code> forms
+are supported.  The latter can run a fixed connector such as
+<code class="docutils literal notranslate"><span class="pre">/usr/bin/nc</span> <span class="pre">example.com</span> <span class="pre">443</span></code> and is appropriate only in
+administrator-controlled templates.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">options</span></code></dt><dd><p>List of additional QEMU <code class="docutils literal notranslate"><span class="pre">-netdev</span></code> options, without the backend and
+<code class="docutils literal notranslate"><span class="pre">id=net0</span></code> prefix.  For <code class="docutils literal notranslate"><span class="pre">user</span></code>, this exposes features such as <code class="docutils literal notranslate"><span class="pre">net=</span></code>,
+<code class="docutils literal notranslate"><span class="pre">host=</span></code>, <code class="docutils literal notranslate"><span class="pre">dns=</span></code>, <code class="docutils literal notranslate"><span class="pre">dnssearch=</span></code>, and <code class="docutils literal notranslate"><span class="pre">dhcpstart=</span></code>.  For <code class="docutils literal notranslate"><span class="pre">passt</span></code>,
+it exposes QEMU's passt properties such as <code class="docutils literal notranslate"><span class="pre">mtu=</span></code>, <code class="docutils literal notranslate"><span class="pre">dns=</span></code>,
+<code class="docutils literal notranslate"><span class="pre">outbound-if4=</span></code>, and protocol toggles.  Keys managed by dedicated vmocs
+fields cannot be overridden here.</p>
+</dd>
+</dl>
+<p>The following fields apply only to <code class="docutils literal notranslate"><span class="pre">mode:</span> <span class="pre">passt</span></code>:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">bind</span></code></dt><dd><p>Address, or <code class="docutils literal notranslate"><span class="pre">%interface</span></code>, shared by passt's inbound listeners.  Default
+is <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, keeping the management SSH port private.  Set
+<code class="docutils literal notranslate"><span class="pre">0.0.0.0</span></code> only when remote inbound access is intentional.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">tcp-ports</span></code>, <code class="docutils literal notranslate"><span class="pre">udp-ports</span></code></dt><dd><p>Lists of passt port specifications, such as <code class="docutils literal notranslate"><span class="pre">8080:80</span></code>.  vmocs prepends
+its dynamic host-port-to-guest-22 TCP mapping.  UDP defaults to <code class="docutils literal notranslate"><span class="pre">none</span></code>
+so passt does not implicitly open a UDP listener matching that SSH port.
+All entries use the single address from <code class="docutils literal notranslate"><span class="pre">bind</span></code>.</p>
+</dd>
+</dl>
+<p>Deny-by-default agent template:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">secure</span><span class="o">-</span><span class="n">agent</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+  <span class="n">network</span><span class="p">:</span>
+    <span class="n">restrict</span><span class="p">:</span> <span class="n">true</span>
+    <span class="n">ipv6</span><span class="p">:</span> <span class="n">false</span>
+</pre></div>
+</div>
+<p>Restricted template with one HTTPS destination:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">api</span><span class="o">-</span><span class="n">agent</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">secure</span><span class="o">-</span><span class="n">agent</span>
+  <span class="n">network</span><span class="p">:</span>
+    <span class="n">restrict</span><span class="p">:</span> <span class="n">true</span>
+    <span class="n">ipv6</span><span class="p">:</span> <span class="n">false</span>
+    <span class="n">guestfwd</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">tcp</span><span class="p">:</span><span class="mf">10.0.2.100</span><span class="p">:</span><span class="mi">443</span><span class="o">-</span><span class="n">cmd</span><span class="p">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">nc</span> <span class="n">api</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span> <span class="mi">443</span>
+</pre></div>
+</div>
+<p>The guest reaches that endpoint through <code class="docutils literal notranslate"><span class="pre">10.0.2.100:443</span></code>.  For HTTPS,
+preserve the hostname used for TLS, for example with
+<code class="docutils literal notranslate"><span class="pre">curl</span> <span class="pre">--resolve</span> <span class="pre">api.example.com:443:10.0.2.100</span></code>.  QEMU user networking
+cannot express transparent domain or CIDR allowlists; use a filtered TAP or
+bridge, or an egress proxy, when policy must cover arbitrary addresses,
+protocols, or changing DNS results.</p>
+<p>This constrains code running inside the guest; it is not a policy boundary
+against an untrusted template author.  Administrators must control template
+fields such as <code class="docutils literal notranslate"><span class="pre">custom-args</span></code> and PCI passthrough, either of which can add
+another network path.  Separately configured listeners such as VNC are not
+governed by this user-network policy either.</p>
+<p>Native passt backend example (QEMU 10.1 or newer):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">passt</span><span class="o">-</span><span class="n">agent</span><span class="p">:</span>
+  <span class="n">inherits</span><span class="p">:</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span>
+  <span class="n">qemu</span><span class="o">-</span><span class="nb">bin</span><span class="p">:</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">qemu</span><span class="o">-</span><span class="n">vfio</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">qemu</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">x86_64</span>
+  <span class="n">network</span><span class="p">:</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="n">passt</span>
+    <span class="n">ipv6</span><span class="p">:</span> <span class="n">false</span>
+    <span class="n">tcp</span><span class="o">-</span><span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="mi">8080</span><span class="p">:</span><span class="mi">80</span>
+</pre></div>
+</div>
+<p>Passt runs outside the QEMU process and provides unprivileged outbound and
+explicit inbound connectivity.  It does not implement destination
+allowlisting; use the <code class="docutils literal notranslate"><span class="pre">user</span></code> backend's <code class="docutils literal notranslate"><span class="pre">restrict</span></code> and <code class="docutils literal notranslate"><span class="pre">guestfwd</span></code>
+controls for deny-by-default templates.</p>
 </dd></dl>
 
 <dl class="describe">

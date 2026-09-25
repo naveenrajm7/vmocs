@@ -67,8 +67,11 @@ Fields
 
 .. describe:: network.mode
 
-   Network backend for guest connectivity.  Currently only ``user`` (QEMU
-   user-mode networking with port forwarding) is supported.
+   Network backend for guest connectivity.  ``user`` selects QEMU SLIRP.
+   ``passt`` selects QEMU's native passt backend (QEMU 10.1 or newer) and
+   requires the ``passt`` executable on each compute node.  Other keys in this
+   mapping become site defaults for the per-template ``network`` mapping.  A
+   template can override those defaults.
 
    Default: ``user``
 

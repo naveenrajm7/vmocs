@@ -162,8 +162,11 @@ Currently informational — passthrough is requested per-launch with
 <dl class="describe">
 <dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">network.mode</span></span></dt>
-<dd><p>Network backend for guest connectivity.  Currently only <code class="docutils literal notranslate"><span class="pre">user</span></code> (QEMU
-user-mode networking with port forwarding) is supported.</p>
+<dd><p>Network backend for guest connectivity.  <code class="docutils literal notranslate"><span class="pre">user</span></code> selects QEMU SLIRP.
+<code class="docutils literal notranslate"><span class="pre">passt</span></code> selects QEMU's native passt backend (QEMU 10.1 or newer) and
+requires the <code class="docutils literal notranslate"><span class="pre">passt</span></code> executable on each compute node.  Other keys in this
+mapping become site defaults for the per-template <code class="docutils literal notranslate"><span class="pre">network</span></code> mapping.  A
+template can override those defaults.</p>
 <p>Default: <code class="docutils literal notranslate"><span class="pre">user</span></code></p>
 </dd></dl>
 

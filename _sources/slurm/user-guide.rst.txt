@@ -101,22 +101,26 @@ script and every required path are deliberately made visible in the guest at
 the same locations.  Automatic batch-script staging is not currently
 implemented.
 
-Save changes to the primary disk
---------------------------------
+Save and resume primary-disk state
+----------------------------------
 
-Use ``--vm-save`` to flatten the primary disk overlay after the guest command
-ends::
+Use ``--vm-save`` to publish a cold primary-disk checkpoint after the guest
+command ends, then use ``--vm-resume`` with the same template to continue::
 
-   srun -n1 --pty --vm-image base-ubuntu \
-       --vm-save /shared/images/base-ubuntu-modified.qcow2 bash -l
+   srun -n1 --vm-image base-ubuntu \
+       --vm-save /shared/checkpoints/agent-step-1 agent-step
+   srun -n1 --vm-image base-ubuntu \
+       --vm-resume /shared/checkpoints/agent-step-1 agent-step-2
 
 The destination is a host path on the compute node and must be writable by the
-job user.  The resulting qcow2 file is standalone and can be used as the
-``image`` of another template.  Saving does not modify the original image.
+job user. The checkpoint is a directory containing a thin qcow2 overlay, a
+manifest, and a ``COMPLETE`` marker. Resume creates another overlay and does
+not modify the checkpoint or original image.
 
-Only the primary OS disk is saved.  Template ``extra-disks`` are attached
-directly, so their writes are already persistent and are not copied into the
-saved image.
+Stage 1 saves only primary OS-disk writes. It performs a normal cold boot with
+fresh devices and does not restore RAM, running processes, GPU/device state,
+sidecar state, UEFI variables, TPM state, extra disks, or virtio-fs content.
+Agents should keep durable workspace state on the primary disk.
 
 Use unattached mode
 -------------------

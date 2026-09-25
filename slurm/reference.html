@@ -116,8 +116,17 @@ through the compute node's vmocs configuration.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-vm-save">
 <span class="sig-name descname"><span class="pre">--vm-save</span></span><span class="sig-prename descclassname"> <span class="pre">PATH</span></span><a class="headerlink" href="#cmdoption-vm-save" title="Link to this definition"></a></dt>
-<dd><p>After guest shutdown, flatten the primary disk overlay into a standalone
-qcow2 file at the host path <em>PATH</em>.  Meaningful only with <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>.</p>
+<dd><p>After guest shutdown, publish a cold primary-disk checkpoint directory at
+the host path <em>PATH</em>.  The destination must not already exist.  Meaningful
+only with <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-vm-resume">
+<span class="sig-name descname"><span class="pre">--vm-resume</span></span><span class="sig-prename descclassname"> <span class="pre">CHECKPOINT</span></span><a class="headerlink" href="#cmdoption-vm-resume" title="Link to this definition"></a></dt>
+<dd><p>Cold-boot from a complete vmocs checkpoint.  The checkpoint must have been
+created from the same template passed through <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>.  Resume uses
+a new writable overlay and never mutates <em>CHECKPOINT</em>.</p>
 </dd></dl>
 
 <dl class="std option">
@@ -238,7 +247,7 @@ GPU-index map.  See <a class="reference internal" href="gpu-passthrough.html"><s
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></p></td>
-<td><p>Register the three Slurm options.</p></td>
+<td><p>Register the four Slurm options.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init_post_opt</span></code></p></td>
 <td><p>Persist the selected template in the job environment in allocator

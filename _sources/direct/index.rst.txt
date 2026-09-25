@@ -43,21 +43,25 @@ be cleaned up when that command finishes::
 terminal for interactive input, returns the guest command's exit status, and
 shuts the VM down after the session.
 
-Save disk changes
------------------
+Save and resume disk changes
+----------------------------
 
 The primary guest disk normally uses a disposable copy-on-write overlay.  To
-flatten a detached VM's modified overlay into a standalone qcow2 image::
+publish a detached VM's modified primary disk as a cold checkpoint::
 
-   vmocs stop 12345 --save /shared/images/ubuntu-modified.qcow2
+   vmocs stop 12345 --save /shared/checkpoints/agent-step-1
 
 For an attached command, save when the command finishes::
 
-   vmocs run base-ubuntu --save /shared/images/ubuntu-modified.qcow2 -- bash
+   vmocs run base-ubuntu --save /shared/checkpoints/agent-step-1 -- bash
 
-Only the primary OS disk is included.  Files configured through the
-``extra-disks`` template field are attached directly and retain their own
-changes independently.
+Resume the saved primary-disk state without modifying the checkpoint::
+
+   vmocs run base-ubuntu --resume /shared/checkpoints/agent-step-1 -- bash
+
+Stage 1 includes only primary OS-disk writes. RAM, running processes,
+GPU/device state, sidecars, UEFI variables, TPM state, extra disks, and
+virtio-fs content are not captured; resume is a normal cold boot.
 
 Create a fast-start snapshot
 ----------------------------

@@ -103,7 +103,8 @@ termination and runtime-directory cleanup.</p>
 <section id="spank-lifecycle">
 <h2>SPANK lifecycle<a class="headerlink" href="#spank-lifecycle" title="Link to this heading"></a></h2>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></dt><dd><p>Registers <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>, <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code>, and <code class="docutils literal notranslate"><span class="pre">--vm-attach</span></code> in every
+<dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></dt><dd><p>Registers <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code>, <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code>, <code class="docutils literal notranslate"><span class="pre">--vm-resume</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--vm-attach</span></code> in every
 context where the plugin is loaded.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">slurm_spank_init_post_opt</span></code></dt><dd><p>In allocator context, records the selected template in the job-control
@@ -182,8 +183,9 @@ the stopped overlay so an administrator can recover it manually.</p>
 <h2>Disk ownership<a class="headerlink" href="#disk-ownership" title="Link to this heading"></a></h2>
 <p>The template's base image is never modified by a normal launch.  vmocs writes
 to a per-job COW overlay and discards it at cleanup unless <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> is
-specified.  Saving occurs after the guest is stopped and flattens the backing
-chain into a standalone qcow2 file.</p>
+specified. Saving occurs after the guest is stopped and publishes the thin
+overlay in an immutable checkpoint directory with a manifest and <code class="docutils literal notranslate"><span class="pre">COMPLETE</span></code>
+marker.</p>
 <p>Template <code class="docutils literal notranslate"><span class="pre">extra-disks</span></code> are different: vmocs attaches them directly.  Their
 writes persist independently and they are not included in VM saves or memory
 snapshots.</p>

@@ -151,7 +151,8 @@ the VM.</p>
 <p>Every launch creates a qcow2 overlay over the template image.  Jobs start from
 a known base, concurrent jobs do not write the same OS disk, and cleanup is
 normally a directory removal.  <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> is an explicit opt-in operation
-that converts the overlay to a new independent image.</p>
+that publishes the stopped primary-disk overlay as an immutable cold
+checkpoint.</p>
 </section>
 <section id="reject-multi-task-steps">
 <h2>Reject multi-task steps<a class="headerlink" href="#reject-multi-task-steps" title="Link to this heading"></a></h2>

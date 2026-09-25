@@ -117,10 +117,8 @@ via QMP and cleans up the runtime directory.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-save">
 <span class="sig-name descname"><span class="pre">--save</span></span><span class="sig-prename descclassname"> <span class="pre">PATH</span></span><a class="headerlink" href="#cmdoption-save" title="Link to this definition"></a></dt>
-<dd><p>Before stopping the VM, flatten the VM disk (including all changes made
-inside the guest) into a new standalone <code class="docutils literal notranslate"><span class="pre">qcow2</span></code> image at <em>PATH</em>.  The
-resulting image can be used directly as a template <code class="docutils literal notranslate"><span class="pre">image:</span></code> for future
-jobs — equivalent to a &quot;save disk&quot; operation.</p>
+<dd><p>Stop the guest and atomically publish a cold primary-disk checkpoint
+directory at <em>PATH</em>.  Resume it with <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span> <span class="pre">TEMPLATE</span> <span class="pre">--resume</span> <span class="pre">PATH</span></code>.</p>
 </dd></dl>
 
 <dl class="std option">
@@ -138,7 +136,7 @@ gone.  The Slurm plugin uses this for best-effort cleanup.</p>
 </pre></div>
 </div>
 <p>Stop and save disk changes:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">stop</span> <span class="mi">12345</span> <span class="o">--</span><span class="n">save</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">modified</span><span class="o">.</span><span class="n">qcow2</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">stop</span> <span class="mi">12345</span> <span class="o">--</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">checkpoints</span><span class="o">/</span><span class="n">agent</span><span class="o">-</span><span class="n">step</span><span class="o">-</span><span class="mi">1</span>
 </pre></div>
 </div>
 </section>

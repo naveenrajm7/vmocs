@@ -134,7 +134,7 @@ both system and user templates is an error.</p>
 <section id="cluster-deployments">
 <h3>Cluster deployments<a class="headerlink" href="#cluster-deployments" title="Link to this heading"></a></h3>
 <p>For a shared cluster, set the system templates path in <code class="docutils literal notranslate"><span class="pre">vmocs.yaml</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">templates</span><span class="p">:</span> <span class="o">/</span><span class="n">cluster</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">templates</span><span class="p">:</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">templates</span><span class="o">.</span><span class="n">yaml</span>
 </pre></div>
 </div>
 <p>All users on the cluster then share those templates automatically.  Individual
@@ -378,7 +378,7 @@ display-class (<code class="docutils literal notranslate"><span class="pre">0x03
 and QEMU must supply one externally.</p>
 <p>Example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pci</span><span class="o">-</span><span class="n">roms</span><span class="p">:</span>
-  <span class="mi">1002</span><span class="p">:</span><span class="mi">1586</span><span class="p">:</span> <span class="o">/</span><span class="n">cluster</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">roms</span><span class="o">/</span><span class="n">vbios_1002_1586</span><span class="o">.</span><span class="n">bin</span>
+  <span class="mi">1002</span><span class="p">:</span><span class="mi">1586</span><span class="p">:</span> <span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">vmocs</span><span class="o">/</span><span class="n">roms</span><span class="o">/</span><span class="n">vbios_1002_1586</span><span class="o">.</span><span class="n">bin</span>
 </pre></div>
 </div>
 </dd></dl>

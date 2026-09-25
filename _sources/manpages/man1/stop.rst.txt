@@ -21,10 +21,8 @@ Options
 
 .. option:: --save PATH
 
-   Before stopping the VM, flatten the VM disk (including all changes made
-   inside the guest) into a new standalone ``qcow2`` image at *PATH*.  The
-   resulting image can be used directly as a template ``image:`` for future
-   jobs — equivalent to a "save disk" operation.
+   Stop the guest and atomically publish a cold primary-disk checkpoint
+   directory at *PATH*.  Resume it with ``vmocs run TEMPLATE --resume PATH``.
 
 .. option:: --if-exists
 
@@ -40,7 +38,7 @@ Stop a VM::
 
 Stop and save disk changes::
 
-   vmocs stop 12345 --save /tmp/ubuntu-modified.qcow2
+   vmocs stop 12345 --save /shared/checkpoints/agent-step-1
 
 See Also
 --------

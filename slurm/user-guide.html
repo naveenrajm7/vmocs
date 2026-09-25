@@ -56,7 +56,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#request-resources">Request resources</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#use-an-existing-allocation">Use an existing allocation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#submit-a-batch-workflow">Submit a batch workflow</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#save-changes-to-the-primary-disk">Save changes to the primary disk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#save-and-resume-primary-disk-state">Save and resume primary-disk state</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#use-unattached-mode">Use unattached mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#request-a-gpu">Request a GPU</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#current-limitations">Current limitations</a></li>
@@ -197,20 +197,24 @@ script and every required path are deliberately made visible in the guest at
 the same locations.  Automatic batch-script staging is not currently
 implemented.</p>
 </section>
-<section id="save-changes-to-the-primary-disk">
-<h2>Save changes to the primary disk<a class="headerlink" href="#save-changes-to-the-primary-disk" title="Link to this heading"></a></h2>
-<p>Use <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> to flatten the primary disk overlay after the guest command
-ends:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">pty</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
-    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span><span class="o">-</span><span class="n">modified</span><span class="o">.</span><span class="n">qcow2</span> <span class="n">bash</span> <span class="o">-</span><span class="n">l</span>
+<section id="save-and-resume-primary-disk-state">
+<h2>Save and resume primary-disk state<a class="headerlink" href="#save-and-resume-primary-disk-state" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> to publish a cold primary-disk checkpoint after the guest
+command ends, then use <code class="docutils literal notranslate"><span class="pre">--vm-resume</span></code> with the same template to continue:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">checkpoints</span><span class="o">/</span><span class="n">agent</span><span class="o">-</span><span class="n">step</span><span class="o">-</span><span class="mi">1</span> <span class="n">agent</span><span class="o">-</span><span class="n">step</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">resume</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">checkpoints</span><span class="o">/</span><span class="n">agent</span><span class="o">-</span><span class="n">step</span><span class="o">-</span><span class="mi">1</span> <span class="n">agent</span><span class="o">-</span><span class="n">step</span><span class="o">-</span><span class="mi">2</span>
 </pre></div>
 </div>
 <p>The destination is a host path on the compute node and must be writable by the
-job user.  The resulting qcow2 file is standalone and can be used as the
-<code class="docutils literal notranslate"><span class="pre">image</span></code> of another template.  Saving does not modify the original image.</p>
-<p>Only the primary OS disk is saved.  Template <code class="docutils literal notranslate"><span class="pre">extra-disks</span></code> are attached
-directly, so their writes are already persistent and are not copied into the
-saved image.</p>
+job user. The checkpoint is a directory containing a thin qcow2 overlay, a
+manifest, and a <code class="docutils literal notranslate"><span class="pre">COMPLETE</span></code> marker. Resume creates another overlay and does
+not modify the checkpoint or original image.</p>
+<p>Stage 1 saves only primary OS-disk writes. It performs a normal cold boot with
+fresh devices and does not restore RAM, running processes, GPU/device state,
+sidecar state, UEFI variables, TPM state, extra disks, or virtio-fs content.
+Agents should keep durable workspace state on the primary disk.</p>
 </section>
 <section id="use-unattached-mode">
 <h2>Use unattached mode<a class="headerlink" href="#use-unattached-mode" title="Link to this heading"></a></h2>

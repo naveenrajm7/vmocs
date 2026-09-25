@@ -156,8 +156,16 @@ executed.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-save">
 <span class="sig-name descname"><span class="pre">--save</span></span><span class="sig-prename descclassname"> <span class="pre">PATH</span></span><a class="headerlink" href="#cmdoption-save" title="Link to this definition"></a></dt>
-<dd><p>After guest shutdown, flatten changes to the primary disk into a standalone
-qcow2 image at <em>PATH</em>.</p>
+<dd><p>After guest shutdown, atomically publish a cold checkpoint directory at
+<em>PATH</em>.  Stage 1 captures primary-disk writes only, not RAM, GPU/device
+state, sidecar state, extra disks, or host-mounted content.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-resume">
+<span class="sig-name descname"><span class="pre">--resume</span></span><span class="sig-prename descclassname"> <span class="pre">CHECKPOINT</span></span><a class="headerlink" href="#cmdoption-resume" title="Link to this definition"></a></dt>
+<dd><p>Cold-boot from a complete checkpoint created from the same template.  A new
+writable overlay is created, so the checkpoint remains immutable.</p>
 </dd></dl>
 
 </section>
@@ -173,6 +181,11 @@ qcow2 image at <em>PATH</em>.</p>
 </div>
 <p>Start an unattached VM and hold the supervisor open:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">attach</span> <span class="n">none</span>
+</pre></div>
+</div>
+<p>Save and resume an agent workspace:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">save</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">checkpoints</span><span class="o">/</span><span class="n">step</span><span class="o">-</span><span class="mi">1</span> <span class="o">--</span> <span class="n">agent</span><span class="o">-</span><span class="n">step</span>
+<span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span><span class="n">resume</span> <span class="o">/</span><span class="n">shared</span><span class="o">/</span><span class="n">checkpoints</span><span class="o">/</span><span class="n">step</span><span class="o">-</span><span class="mi">1</span> <span class="o">--</span> <span class="n">agent</span><span class="o">-</span><span class="n">step</span><span class="o">-</span><span class="mi">2</span>
 </pre></div>
 </div>
 </section>

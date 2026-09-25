@@ -7,6 +7,30 @@ on:
     branches: [main]
 
 jobs:
+  python-package:
+    name: Python package (build + inspect)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and check distributions
+        run: |
+          python -m pip install build twine
+          python development/check_release.py
+          python -m build
+          python -m twine check dist/*
+
+      - name: Verify the wheel version
+        run: |
+          python -m pip install --no-deps --target /tmp/vmocs-wheel dist/*.whl
+          EXPECTED_VERSION=$(python development/check_release.py)
+          PYTHONPATH=/tmp/vmocs-wheel EXPECTED_VERSION="$EXPECTED_VERSION" \
+            python -c "import os, vmocs; assert vmocs.__version__ == os.environ['EXPECTED_VERSION']"
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -71,4 +95,24 @@ jobs:
       - name: Verify the plugin is in the payload
         run: |
           dpkg-deb -c plugins/vmocs-slurm-plugin_*_amd64.deb \
+            | grep -q 'slurm/spank_vmocs.so'
+
+  rpm-package:
+    name: RPM package (build + inspect)
+    runs-on: ubuntu-latest
+    container: fedora:43
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: dnf install -y gcc make python3 rpm-build slurm-devel
+
+      - name: Build the RPM
+        run: make -C plugins/slurm rpm
+
+      - name: Verify the RPM payload
+        run: |
+          test "$(find plugins/slurm/rpm/RPMS -type f -name '*.rpm' | wc -l)" -eq 1
+          rpm -K plugins/slurm/rpm/RPMS/*/*.rpm
+          rpm -qpl plugins/slurm/rpm/RPMS/*/*.rpm \
             | grep -q 'slurm/spank_vmocs.so'

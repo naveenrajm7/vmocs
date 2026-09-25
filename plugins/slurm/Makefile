@@ -3,11 +3,17 @@ libdir      ?= $(prefix)/lib
 datarootdir ?= $(prefix)/share
 datadir     ?= $(datarootdir)
 
+.DEFAULT_GOAL := all
+
 PLUGINDIR := $(abspath $(DESTDIR)/$(libdir)/slurm)
 CONFDIR   := $(abspath $(DESTDIR)/$(datadir)/vmocs)
 
-# Keep in sync with debian/changelog when releasing.
-VMOCS_VER ?= 0.0.4
+VERSION_FILE := $(abspath $(CURDIR)/../../lib/vmocs/__init__.py)
+VMOCS_VER ?= $(shell sed -n "s/^__version__ = '\([^']*\)'/\1/p" $(VERSION_FILE))
+
+ifeq ($(strip $(VMOCS_VER)),)
+$(error Unable to read VMOCS_VER from $(VERSION_FILE))
+endif
 
 PKG    := vmocs-slurm-plugin
 PLUGIN := spank_vmocs.so
@@ -20,7 +26,10 @@ CPPFLAGS := -D_GNU_SOURCE $(CPPFLAGS)
 CFLAGS   := -std=gnu11 -O2 -Wall -fstack-protector-strong -fPIC $(CFLAGS)
 LDFLAGS  := -Wl,-znoexecstack -Wl,-zrelro -Wl,-znow $(LDFLAGS)
 
-.PHONY: all install uninstall clean deb rpm
+.PHONY: all install uninstall clean deb rpm print-version
+
+print-version:
+	@printf '%s\n' '$(VMOCS_VER)'
 
 all: $(PLUGIN)
 

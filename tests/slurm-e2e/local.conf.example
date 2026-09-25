@@ -1,10 +1,10 @@
 # Copy to local.conf and adjust for the cluster under test.
 PARTITION=vm
 ACCOUNT=vm
-NODELIST=ctr-navi4x-aj73-ws01
+NODELIST=vm-gpu-node.example.com
 VM_IMAGE=vfio-user-sidecars-e2e
 CPUS_PER_TASK=4
 MEM=10G
-VMOCS_CONF=/cluster/vmocs/config/vmocs.yaml
-REPO_PATH=/home/AMD/nmuthura/devcloud/vmocs
+VMOCS_CONF=/etc/vmocs/vmocs.yaml
+REPO_PATH=/opt/vmocs
 VM_READY_TIMEOUT=300

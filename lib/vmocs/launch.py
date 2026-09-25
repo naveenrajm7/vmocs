@@ -12,8 +12,15 @@ import socket
 import subprocess
 import tempfile
 import time
+import uuid
 
-from .error import HypervisorError, ImageError
+from .checkpoint import (
+    checkpoint_path,
+    create_checkpoint,
+    load_checkpoint,
+    prepare_checkpoint_destination,
+)
+from .error import HypervisorError
 from .image import VMImage
 from .hypervisor import build_qemu_cmdline, _make_cloud_init_iso, _find_free_port
 from .keys import VAGRANT_KEY
@@ -38,6 +45,12 @@ def _write_metadata(runtime_dir, meta):
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temp_path, path)
+    descriptor = os.open(
+        runtime_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def is_vm_stopping(runtime_dir):
@@ -99,10 +112,13 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
         os.unlink(tmp_pub)
 
 
-def wait_for_ssh(host, port, key_path, timeout, ssh_user='root'):
+def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
+                 stop_requested=None):
     """Poll until the SSH daemon serves a banner. Works for Linux and Windows guests."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if stop_requested and stop_requested():
+            return False
         try:
             with socket.create_connection((host, port), timeout=2) as s:
                 if s.recv(256).startswith(b'SSH-'):
@@ -114,7 +130,7 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root'):
 
 
 def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
-              supervised=False):
+              supervised=False, save_path=None, resume_path=None):
     """
     Launch a VM and wait for SSH. Returns a dict with runtime metadata.
 
@@ -132,6 +148,15 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     if job_id is None:
         job_id = os.getpid()
 
+    if save_path:
+        save_path = prepare_checkpoint_destination(save_path)
+    if resume_path:
+        resume_path = checkpoint_path(resume_path)
+        _, resume_disk = load_checkpoint(
+            resume_path, expected_template=template.name)
+    else:
+        resume_disk = None
+
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
     os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
     if os.path.exists(os.path.join(runtime_dir, 'vm.json')):
@@ -140,11 +165,14 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
     # Detect snapshot: template.snapshot points to a snapshot dir
     snap_dir = template.snapshot
-    using_snapshot = bool(snap_dir and os.path.isfile(
+    using_snapshot = bool(not resume_disk and snap_dir and os.path.isfile(
         os.path.join(snap_dir, 'memory')))
 
-    # Resolve base image: prefer snapshot disk, then template image/image-dir
-    if using_snapshot:
+    # Resolve base image: a cold checkpoint overrides the template's boot
+    # snapshot but keeps the template's current device/sidecar configuration.
+    if resume_disk:
+        base_image = resume_disk
+    elif using_snapshot:
         base_image = os.path.join(snap_dir, 'disk.qcow2')
     elif template.image_dir:
         import glob
@@ -156,6 +184,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         base_image = template.image
     else:
         raise HypervisorError('template has no image or image-dir')
+    base_image = os.path.abspath(base_image)
 
     # 1. COW overlay
     logging.info('Creating disk overlay...')
@@ -243,9 +272,16 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'ssh_user': ssh_user,
         'key_path': key_path,
         'overlay': overlay,
+        'base_image': base_image,
         'qmp_socket': qmp_socket,
         'runtime_dir': runtime_dir,
         'template': template.name,
+        'cores': cores,
+        'memory_mb': memory_mb,
+        'pci_devices': list(pci_devices),
+        'save_path': save_path,
+        'resume_path': resume_path,
+        'checkpoint_id': str(uuid.uuid4()) if save_path else None,
         'ssh_timeout': ssh_timeout,
         'state': 'starting',
         'boot_id': read_boot_id(),
@@ -348,7 +384,7 @@ def _graceful_shutdown(qmp_socket, pid, timeout=60):
         mon.close()
     except Exception:
         _kill_qemu(pid)
-        return
+        return False
 
     # Wait for QEMU to exit naturally (guest runs shutdown, syncs filesystems)
     deadline = time.monotonic() + timeout
@@ -357,21 +393,21 @@ def _graceful_shutdown(qmp_socket, pid, timeout=60):
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
-            return  # QEMU exited cleanly
+            return True  # QEMU exited cleanly
 
     # Guest didn't shut down in time — force kill
     _kill_qemu(pid)
+    return False
 
 
 def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
                 save_path=None):
-    """Kill QEMU, optionally save disk state, then remove runtime dir.
+    """Stop QEMU, optionally publish a cold checkpoint, then clean up.
 
     Args:
-        save_path: If given, flatten the COW overlay into a new standalone
-                   qcow2 at this path before cleanup (--vm-save equivalent).
-                   Uses a graceful guest shutdown so the guest OS syncs
-                   its filesystems before we convert the overlay.
+        save_path: Optional checkpoint directory.  Persisted launch-time save
+                   intent is used when this is omitted, which lets the Slurm
+                   exit hook recover an interrupted supervisor.
     """
     if runtime_dir is None:
         runtime_dir = os.path.join(runtime_base, str(job_id))
@@ -383,6 +419,12 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
     with open(vm_json) as f:
         meta = json.load(f)
 
+    requested_save = save_path or meta.get('save_path')
+    if save_path:
+        requested_save = prepare_checkpoint_destination(save_path)
+        meta['save_path'] = requested_save
+        meta['checkpoint_id'] = str(uuid.uuid4())
+
     # Publish intent before QEMU closes its sidecar connections. A blocking
     # supervisor can then distinguish expected shutdown exits from failures.
     meta['state'] = 'stopping'
@@ -390,14 +432,29 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
 
     pid = meta.get('pid')
 
-    if save_path and pid is not None:
-        # Graceful ACPI shutdown so guest syncs filesystems before we convert
-        _graceful_shutdown(meta['qmp_socket'], pid, timeout=60)
-        VMImage.convert_standalone(meta['overlay'], save_path)
-    elif pid is not None:
-        _kill_qemu(pid)
+    remove_runtime = False
+    try:
+        if requested_save and pid is not None:
+            # A clean shutdown is the Stage-1 consistency boundary.  The disk
+            # is copied only after QEMU can no longer write to it.
+            clean = _graceful_shutdown(meta['qmp_socket'], pid, timeout=60)
+            meta['checkpoint_consistency'] = (
+                'clean-shutdown' if clean else 'crash-consistent')
+        elif pid is not None:
+            _kill_qemu(pid)
 
-    stop_vm_sidecars(meta)
+        stop_vm_sidecars(meta)
+        if requested_save:
+            meta['state'] = 'checkpointing'
+            _write_metadata(runtime_dir, meta)
+            create_checkpoint(meta, requested_save)
+            meta['state'] = 'checkpointed'
+            _write_metadata(runtime_dir, meta)
+        remove_runtime = True
+    finally:
+        # Sidecar cleanup is idempotent and must still happen after a failed
+        # checkpoint; the stopped source overlay is intentionally retained.
+        stop_vm_sidecars(meta)
 
     # Backward-compatible cleanup for runtimes created before sidecar metadata.
     import glob, signal, shutil
@@ -407,5 +464,6 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
                 os.kill(int(f.read().strip()), signal.SIGTERM)
         except OSError:
             pass
-    shutil.rmtree(runtime_dir, ignore_errors=True)
+    if remove_runtime:
+        shutil.rmtree(runtime_dir, ignore_errors=True)
     return meta

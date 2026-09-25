@@ -8,16 +8,19 @@ import logging
 import queue
 import shlex
 import shutil
+import signal
 import subprocess
+import threading
 import time
 
+from .checkpoint import create_checkpoint
 from .launch import (
     _kill_qemu,
+    _write_metadata,
     is_vm_stopping,
     stop_vm_sidecars,
     wait_for_ssh,
 )
-from .image import VMImage
 from .monitor import QemuMonitor
 
 
@@ -115,12 +118,15 @@ def _wait_for_qemu(pid, timeout, on_poll=None):
     return False
 
 
-def _run_ssh(meta, command, tty, watcher):
+def _run_ssh(meta, command, tty, watcher, stop_requested=None):
     """Run SSH while continuing to supervise critical VM sidecars."""
     process = subprocess.Popen(build_ssh_command(meta, command, tty=tty))
     manager = meta.get('_sidecar_manager')
     while process.poll() is None:
         watcher.drain()
+        if stop_requested and stop_requested():
+            process.terminate()
+            break
         failure = manager.failure() if manager is not None else None
         if failure and not is_vm_stopping(meta['runtime_dir']):
             name, status = failure
@@ -148,15 +154,35 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
     tty = os.isatty(0)
     watcher = _LifecycleWatcher(meta['qmp_socket'])
     status = 255
+    checkpoint_consistency = 'crash-consistent'
+    stop_event = threading.Event()
+    termination_signal = [None]
+    old_handlers = {}
+
+    def _on_signal(signum, _frame):
+        termination_signal[0] = termination_signal[0] or signum
+        stop_event.set()
+
+    if threading.current_thread() is threading.main_thread():
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            old_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, _on_signal)
 
     try:
         while True:
-            status = _run_ssh(meta, command, tty, watcher)
+            status = _run_ssh(
+                meta, command, tty, watcher,
+                stop_requested=stop_event.is_set)
             # QMP events and the SSH child's exit can race slightly.
             time.sleep(0.1)
             watcher.drain()
 
+            if stop_event.is_set():
+                return 128 + termination_signal[0]
+
             if watcher.guest_shutdown or not _process_alive(qemu_pid):
+                if watcher.guest_shutdown:
+                    checkpoint_consistency = 'clean-shutdown'
                 return 0 if watcher.guest_shutdown else status
 
             transport_lost = status == 255
@@ -166,17 +192,22 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
             if tty and transport_lost:
                 if wait_for_ssh(
                         '127.0.0.1', meta['ssh_port'], meta.get('key_path'),
-                        reconnect_timeout, meta['ssh_user']):
+                        reconnect_timeout, meta['ssh_user'],
+                        stop_requested=stop_event.is_set):
                     continue
             return status
     finally:
+        meta['state'] = 'stopping'
+        _write_metadata(meta['runtime_dir'], meta)
         watcher.drain()
         if _process_alive(qemu_pid):
             try:
                 watcher.monitor.powerdown()
             except Exception:
                 pass
-            if not _wait_for_qemu(qemu_pid, 20, watcher.drain):
+            if _wait_for_qemu(qemu_pid, 20, watcher.drain):
+                checkpoint_consistency = 'clean-shutdown'
+            else:
                 try:
                     watcher.monitor.quit()
                 except Exception:
@@ -184,16 +215,25 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
                 if not _wait_for_qemu(qemu_pid, 5, watcher.drain):
                     _kill_qemu(qemu_pid, timeout=1)
                     _wait_for_qemu(qemu_pid, 2)
-        remove_runtime = True
+        remove_runtime = False
         try:
-            if save_path:
-                VMImage.convert_standalone(meta['overlay'], save_path)
+            watcher.close()
+            stop_vm_sidecars(meta)
+            checkpoint_destination = save_path or meta.get('save_path')
+            if checkpoint_destination:
+                meta['checkpoint_consistency'] = checkpoint_consistency
+                meta['state'] = 'checkpointing'
+                _write_metadata(meta['runtime_dir'], meta)
+                create_checkpoint(meta, checkpoint_destination)
+                meta['state'] = 'checkpointed'
+                _write_metadata(meta['runtime_dir'], meta)
+            remove_runtime = True
         except Exception:
             # Preserve the stopped overlay for manual recovery if saving fails.
-            remove_runtime = False
             raise
         finally:
-            watcher.close()
             stop_vm_sidecars(meta)
             if remove_runtime:
                 shutil.rmtree(meta['runtime_dir'], ignore_errors=True)
+            for signum, handler in old_handlers.items():
+                signal.signal(signum, handler)

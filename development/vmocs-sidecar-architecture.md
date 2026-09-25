@@ -53,8 +53,8 @@ This branch implements Changes 1 and 2 from the incremental plan below:
 - explicit rejection of detached vfio-user VMs until the dedicated detached
   supervisor in Change 3 exists.
 
-Validation on `ctr-navi4x-aj73-ws01` used packaged QEMU 11.1.1, rocJitsu
-0.3.0, and rocm-ernic 0.2.0. Both a direct KVM run and Slurm job `67963089`
+Validation on a reference development host used packaged QEMU 11.1.1,
+rocJitsu 0.3.0, and rocm-ernic 0.2.0. Both a direct KVM run and a Slurm job
 passed the combined TPM + virtio-fs + rocJitsu + rocm-ernic guest checks and
 left no runtime or process residue. A direct fault-injection run also
 terminated rocJitsu after readiness and verified a nonzero vmocs exit plus
@@ -99,13 +99,13 @@ This design is based on the following code and experiment artifacts:
   launch path inside the Slurm cgroup and best-effort exit cleanup.
 - [`development/vmocs-vm-lifecycle.md`](vmocs-vm-lifecycle.md): current
   lifecycle intent.
-- `/home/AMD/nmuthura/devcloud/stage1-vfio-user-vm/STAGE1-STAGE2.md`: the
-  proven rocJitsu + rocm-ernic experiment and Stage 3 notes.
+- Private bring-up notes for the proven rocJitsu + rocm-ernic experiment and
+  Stage 3 work.
 - The checked-out `qemu-minimal` commit `5d6868914873757ff1c51dec3ca95a3fa0b2e9d9`,
   especially `qemu-tool/run_vm.py` and
   `compose/vfio-user-ernic-rocjitsu-vm/docker-compose.yml`.
-- The saved Stage 2 QEMU command line and sidecar logs under
-  `/home/AMD/nmuthura/devcloud/stage1-vfio-user-vm/logs/`.
+- The saved Stage 2 QEMU command line and sidecar logs from the private
+  bring-up workspace.
 
 External protocol references are listed at the end of this document.
 
@@ -300,7 +300,7 @@ One possible template syntax is:
 
 ```yaml
 ubuntu-vfio-user:
-  image: /cluster/vmocs/images/ubuntu-vfio-user.qcow2
+  image: /var/lib/vmocs/images/ubuntu-vfio-user.qcow2
   qemu-bin: /opt/vmocs/qemu-vfio/bin/qemu-system-x86_64
   machine-type: q35
   cpu-model: EPYC

@@ -62,7 +62,8 @@ Keep the primary image immutable
 Every launch creates a qcow2 overlay over the template image.  Jobs start from
 a known base, concurrent jobs do not write the same OS disk, and cleanup is
 normally a directory removal.  ``--vm-save`` is an explicit opt-in operation
-that converts the overlay to a new independent image.
+that publishes the stopped primary-disk overlay as an immutable cold
+checkpoint.
 
 Reject multi-task steps
 -----------------------

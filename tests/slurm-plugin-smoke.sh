@@ -60,10 +60,10 @@ export SLURM_CONF="$workdir/slurm.conf"
 # If the compiled-in Slurm version were incompatible, the loader would reject
 # the plugin and these options would be absent.
 help_out=$(srun --help 2>&1 || true)
-for opt in --vm-image --vm-save --vm-attach; do
+for opt in --vm-image --vm-save --vm-resume --vm-attach; do
     echo "$help_out" | grep -q -- "$opt" || fail "srun --help missing $opt"
 done
-pass "srun --help lists --vm-image, --vm-save, --vm-attach"
+pass "srun --help lists --vm-image, --vm-save, --vm-resume, --vm-attach"
 
 sbatch --help 2>&1 | grep -q -- --vm-image \
     || fail "sbatch --help missing --vm-image"

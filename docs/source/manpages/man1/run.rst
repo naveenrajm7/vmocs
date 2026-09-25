@@ -51,8 +51,14 @@ Options
 
 .. option:: --save PATH
 
-   After guest shutdown, flatten changes to the primary disk into a standalone
-   qcow2 image at *PATH*.
+   After guest shutdown, atomically publish a cold checkpoint directory at
+   *PATH*.  Stage 1 captures primary-disk writes only, not RAM, GPU/device
+   state, sidecar state, extra disks, or host-mounted content.
+
+.. option:: --resume CHECKPOINT
+
+   Cold-boot from a complete checkpoint created from the same template.  A new
+   writable overlay is created, so the checkpoint remains immutable.
 
 Examples
 --------
@@ -68,6 +74,11 @@ Open an interactive login shell::
 Start an unattached VM and hold the supervisor open::
 
    vmocs run base-ubuntu --attach none
+
+Save and resume an agent workspace::
+
+   vmocs run base-ubuntu --save /shared/checkpoints/step-1 -- agent-step
+   vmocs run base-ubuntu --resume /shared/checkpoints/step-1 -- agent-step-2
 
 See Also
 --------

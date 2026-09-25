@@ -11,7 +11,7 @@ Images used in these tests:
 | Template | Image | Boot mode |
 |---|---|---|
 | `base-ubuntu` | `/tmp/ubuntu-24.04.qcow2` | cloud-init |
-| `debian-vagrant` | `/home/AMD/nmuthura/vms/extracted/box.img` | vagrant |
+| `debian-vagrant` | `/var/lib/vmocs/images/debian-vagrant.qcow2` | vagrant |
 
 Both templates are defined in `confs/templates.yaml`.
 
@@ -150,15 +150,15 @@ template name, SSH port, and QEMU process status.
 
 ## 6. Save VM disk state
 
-To export a running VM's disk as a standalone image (persists all changes made
-inside the VM):
+To publish a running VM's primary-disk changes as a cold checkpoint:
 
 ```bash
-.venv/bin/vmocs stop <N> --save /path/to/output.qcow2
+.venv/bin/vmocs stop <N> --save /path/to/checkpoint-directory
 ```
 
 vmocs sends an ACPI shutdown so the guest flushes filesystems cleanly, then
-flattens the COW overlay into a self-contained qcow2.
+publishes the thin COW overlay, manifest, and ``COMPLETE`` marker atomically.
+Resume it with ``vmocs run TEMPLATE --resume /path/to/checkpoint-directory``.
 
 ---
 

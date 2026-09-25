@@ -52,6 +52,18 @@ class VMImage:
         return data.get('full-backing-filename') or data.get('backing-filename')
 
     @staticmethod
+    def check(path):
+        """Validate an image and its backing chain with qemu-img check."""
+        if not os.path.isfile(path):
+            raise ImageError(f'image not found: {path}')
+        try:
+            subprocess.check_call(
+                ['qemu-img', 'check', '-q', path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            raise ImageError(f'qemu-img check failed for {path}: {e}')
+
+    @staticmethod
     def convert_standalone(overlay_path, dest_path):
         """Flatten a COW overlay (with all user changes) into a new standalone qcow2.
 

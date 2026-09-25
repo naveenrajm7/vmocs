@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_PATH=$(cd -- "$SCRIPT_DIR/../.." && pwd)
 VMOCS_BIN=${VMOCS_BIN:-vmocs}
+VMOCS_CONFIG=${VMOCS_E2E_CONFIG:-$SCRIPT_DIR/target-vmocs.yaml}
 JOB_ID=${VMOCS_E2E_JOB_ID:-$((950000 + $$))}
 RUNTIME_DIR=/tmp/vmocs/$JOB_ID
 TEST_HOME=/tmp/vmocs-sidecar-failure-home-$JOB_ID
@@ -15,7 +16,7 @@ cleanup() {
         kill "$launcher_pid" 2>/dev/null || true
         wait "$launcher_pid" 2>/dev/null || true
     fi
-    HOME="$TEST_HOME" "$VMOCS_BIN" --config "$SCRIPT_DIR/target-vmocs.yaml" \
+    HOME="$TEST_HOME" "$VMOCS_BIN" --config "$VMOCS_CONFIG" \
         stop --if-exists "$JOB_ID" >/dev/null 2>&1 || true
     rm -f "$LOG"
     rmdir "$TEST_HOME" >/dev/null 2>&1 || true
@@ -24,7 +25,7 @@ trap cleanup EXIT
 mkdir -p "$TEST_HOME"
 
 HOME="$TEST_HOME" PYTHONPATH="$REPO_PATH/lib" \
-    "$VMOCS_BIN" --config "$SCRIPT_DIR/target-vmocs.yaml" run \
+    "$VMOCS_BIN" --config "$VMOCS_CONFIG" run \
     --cores 4 --memory 8192 --job-id "$JOB_ID" --attach none \
     vfio-user-sidecars-e2e >"$LOG" 2>&1 &
 launcher_pid=$!

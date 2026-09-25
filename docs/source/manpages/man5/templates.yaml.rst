@@ -40,7 +40,7 @@ Cluster deployments
 
 For a shared cluster, set the system templates path in ``vmocs.yaml``::
 
-   templates: /cluster/vmocs/config/templates.yaml
+   templates: /etc/vmocs/templates.yaml
 
 All users on the cluster then share those templates automatically.  Individual
 users can add personal templates in ``~/.vmocs/templates.yaml`` without
@@ -235,7 +235,7 @@ Fields
    Example::
 
       pci-roms:
-        1002:1586: /cluster/vmocs/roms/vbios_1002_1586.bin
+        1002:1586: /var/lib/vmocs/roms/vbios_1002_1586.bin
 
 .. describe:: gpu
 

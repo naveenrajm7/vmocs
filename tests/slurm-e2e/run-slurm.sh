@@ -10,7 +10,7 @@ fi
 
 PARTITION=${PARTITION:-vm}
 ACCOUNT=${ACCOUNT:-vm}
-NODELIST=${NODELIST:-ctr-navi4x-aj73-ws01}
+NODELIST=${NODELIST:-vm-gpu-node.example.com}
 VM_IMAGE=${VM_IMAGE:-vfio-user-sidecars-e2e}
 CPUS_PER_TASK=${CPUS_PER_TASK:-4}
 MEM=${MEM:-10G}

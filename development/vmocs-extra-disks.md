@@ -59,7 +59,7 @@ rocm-nvme:
 | **Launch** | Attach extra disk directly (no COW overlay). User must ensure the file exists. |
 | **Snapshot create** | Only save drive0 (OS disk) + memory. Extra disks are not part of the snapshot. |
 | **Snapshot restore** | Restore drive0 + memory. Extra disks re-attached at their original paths. The extra disk content must match what QEMU expects from the saved memory state. |
-| **VM save (`--save`)** | Only flatten drive0. Extra disks are the user's responsibility. |
+| **VM save (`--save`)** | Only checkpoint drive0. Extra disks are the user's responsibility. |
 | **Teardown** | Kill QEMU. Extra disk files are untouched (user owns them). |
 
 ### Pros

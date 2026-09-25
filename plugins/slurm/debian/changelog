@@ -1,3 +1,11 @@
+vmocs-slurm-plugin (0.1.0) unstable; urgency=medium
+
+  * Add supervised guest sessions, VM sidecars, checkpoint save/resume, and
+    configurable SLIRP and passt networking.
+  * Publish the plugin as an automated GitHub release asset.
+
+ -- Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com>  Fri, 25 Sep 2026 04:00:00 +0000
+
 vmocs-slurm-plugin (0.0.4) unstable; urgency=medium
 
   * Initial package.

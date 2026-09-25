@@ -38,13 +38,13 @@ EOF
 chmod +x %{_builddir}/find-requires
 
 %build
-%make_build prefix=%{_prefix}
+%make_build prefix=%{_prefix} VMOCS_VER=%{version}
 # --no-as-needed is required: the dummy references no libslurm symbols, so
 # toolchains that default to --as-needed would drop the DT_NEEDED entry.
 %{__cc} -Wl,--no-as-needed -o %{_builddir}/libslurm_dummy %{_builddir}/libslurm_dummy.c -lslurm
 
 %install
-%make_install prefix=%{_prefix} libdir=%{_libdir} datarootdir=%{_datadir} DESTDIR=%{buildroot}
+%make_install prefix=%{_prefix} libdir=%{_libdir} datarootdir=%{_datadir} DESTDIR=%{buildroot} VMOCS_VER=%{version}
 
 %files
 %license LICENSE
@@ -54,5 +54,9 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Fri Sep 25 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.0-1
+- Add supervised sessions, sidecars, checkpoints, and network policies
+- Publish RPM as an automated GitHub release asset
+
 * Fri Aug 07 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.0.4-1
 - Initial package

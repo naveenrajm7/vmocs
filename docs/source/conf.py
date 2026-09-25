@@ -1,5 +1,6 @@
 import glob
 import re
+from pathlib import Path
 
 extensions = ['sphinx.ext.githubpages']
 
@@ -9,8 +10,12 @@ master_doc = 'index'
 project = 'vmocs'
 copyright = '2026, Naveenraj Muthuraj'
 author = 'Naveenraj Muthuraj'
-version = '0.1.0'
-release = '0.1.0'
+version_text = (Path(__file__).parents[2] / 'lib/vmocs/__init__.py').read_text()
+version_match = re.search(r"^__version__ = '([^']+)'$", version_text, re.MULTILINE)
+if not version_match:
+    raise RuntimeError('cannot find vmocs __version__')
+version = version_match.group(1)
+release = version
 
 exclude_patterns = []
 pygments_style = 'sphinx'

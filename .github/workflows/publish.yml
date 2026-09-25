@@ -123,6 +123,6 @@ jobs:
           sha256sum ./*.whl ./*.tar.gz ./*.deb ./*.rpm > SHA256SUMS
 
       - name: Upload every asset together
-        run: gh release upload '${{ github.event.release.tag_name }}' release-assets/* --clobber
+        run: gh release upload '${{ github.event.release.tag_name }}' release-assets/* --clobber --repo '${{ github.repository }}'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

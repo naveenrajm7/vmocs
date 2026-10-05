@@ -178,7 +178,7 @@ def plan_sidecars(cfg, template, runtime_dir):
             continue
         if opts.get('readonly', False):
             raise HypervisorError('read-only mounts not supported with virtio-fs')
-        host_path = opts['path']
+        host_path = os.path.abspath(os.path.expanduser(opts['path']))
         socket_path = os.path.join(runtime_dir, f'virtiofs_{mount_index}.sock')
         name = f'virtiofsd-{mount_index}'
         spec = _process_spec(

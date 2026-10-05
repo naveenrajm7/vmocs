@@ -15,6 +15,7 @@
 
 import logging
 import os
+import shlex
 import socket
 import subprocess
 import uuid
@@ -121,9 +122,68 @@ def block_cmdline(model, path, name, index, cache, serial=None):
 # Cloud-init ISO — adapted from pcocc Hypervisor.py:1579-1646
 # ---------------------------------------------------------------------------
 
-def _make_cloud_init_iso(runtime_dir, ssh_pubkey, hostname='vmocs', ssh_user='root'):
+def _make_cloud_init_iso(runtime_dir, ssh_pubkey, hostname='vmocs',
+                         ssh_user='root', host_user=None):
     """Write cloud-init user-data + meta-data, then call genisoimage."""
-    if ssh_user == 'root':
+    if host_user is not None:
+        username = host_user['name']
+        uid = host_user['uid']
+        gid = host_user['gid']
+        home = f'/home/{username}' if username != 'root' else '/root'
+        script = f'''#!/bin/sh
+set -eu
+username={shlex.quote(username)}
+uid={uid}
+gid={gid}
+home={shlex.quote(home)}
+authorized_key={shlex.quote(ssh_pubkey)}
+
+uid_entry=$(getent passwd "$uid" || true)
+if [ -n "$uid_entry" ] && [ "${{uid_entry%%:*}}" != "$username" ]; then
+    echo "uid $uid already belongs to ${{uid_entry%%:*}}" >&2
+    exit 1
+fi
+
+if ! getent group "$gid" >/dev/null; then
+    groupadd --gid "$gid" "vmocs-$gid"
+fi
+
+if getent passwd "$username" >/dev/null; then
+    if [ "$(id -u "$username")" -ne "$uid" ] || \
+       [ "$(id -g "$username")" -ne "$gid" ]; then
+        echo "guest user $username exists with different uid/gid" >&2
+        exit 1
+    fi
+else
+    useradd --uid "$uid" --gid "$gid" --create-home --no-log-init \
+        --shell /bin/bash "$username"
+fi
+
+for group in sudo render video; do
+    if getent group "$group" >/dev/null; then
+        usermod --append --groups "$group" "$username"
+    fi
+done
+
+install -d -m 0700 -o "$uid" -g "$gid" "$home/.ssh"
+printf '%s\n' "$authorized_key" > "$home/.ssh/authorized_keys"
+chown "$uid:$gid" "$home/.ssh/authorized_keys"
+chmod 0600 "$home/.ssh/authorized_keys"
+printf '%s\n' "$username ALL=(ALL) NOPASSWD:ALL" \
+    > "/etc/sudoers.d/90-vmocs-$username"
+chmod 0440 "/etc/sudoers.d/90-vmocs-$username"
+'''
+        user_data = {
+            'ssh_pwauth': False,
+            'write_files': [{
+                'path': '/usr/local/sbin/vmocs-create-host-user',
+                'owner': 'root:root',
+                'permissions': '0700',
+                'content': script,
+            }],
+            'runcmd': [['/usr/local/sbin/vmocs-create-host-user']],
+        }
+    elif ssh_user == 'root':
         user_data = {
             'disable_root': False,
             'ssh_pwauth': False,
@@ -205,7 +265,7 @@ def _mount_cmdline(mount_points):
     for tag, opts in mount_points.items():
         if isinstance(opts, str):
             opts = {'path': opts}
-        host_path = opts['path']
+        host_path = os.path.abspath(os.path.expanduser(opts['path']))
         mount_type = opts.get('type', 'virtio-9p')
         readonly = opts.get('readonly', False)
         ro_str = ',readonly' if readonly else ''

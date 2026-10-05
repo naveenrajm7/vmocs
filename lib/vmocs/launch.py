@@ -8,6 +8,8 @@
 import json
 import logging
 import os
+import pwd
+import re
 import socket
 import subprocess
 import tempfile
@@ -32,6 +34,21 @@ from .sidecars import (
     read_boot_id,
     stop_persisted_sidecars,
 )
+
+
+def _current_host_user():
+    """Return the submitter identity that QEMU and shared files run as."""
+    uid = os.getuid()
+    gid = os.getgid()
+    try:
+        username = pwd.getpwuid(uid).pw_name
+    except KeyError as exc:
+        raise HypervisorError(f'no passwd entry for host uid {uid}') from exc
+    if (len(username) > 32 or not re.fullmatch(
+            r'[A-Za-z_][A-Za-z0-9_.-]*\$?', username)):
+        raise HypervisorError(
+            f'host username cannot be created safely in the guest: {username!r}')
+    return {'name': username, 'uid': uid, 'gid': gid}
 
 
 def _write_metadata(runtime_dir, meta):
@@ -113,8 +130,8 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
 
 
 def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
-                 stop_requested=None):
-    """Poll until the SSH daemon serves a banner. Works for Linux and Windows guests."""
+                 stop_requested=None, authenticate=False):
+    """Poll for an SSH banner and, when requested, a successful key login."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if stop_requested and stop_requested():
@@ -122,7 +139,26 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
         try:
             with socket.create_connection((host, port), timeout=2) as s:
                 if s.recv(256).startswith(b'SSH-'):
-                    return True
+                    if not authenticate:
+                        return True
+                    argv = [
+                        'ssh',
+                        '-o', 'BatchMode=yes',
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-o', 'ConnectTimeout=2',
+                    ]
+                    if key_path:
+                        argv += ['-i', key_path]
+                    argv += [
+                        '-p', str(port),
+                        f'{ssh_user}@{host}',
+                        'exit 0',
+                    ]
+                    if subprocess.call(
+                            argv, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL) == 0:
+                        return True
         except OSError:
             pass
         time.sleep(2)
@@ -193,7 +229,18 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
     # 2. SSH keypair — always ephemeral; snapshots reuse their pre-burned key
     boot_mode = template.boot_mode
-    ssh_user = template.ssh_user
+    host_user = None
+    if template.host_user_identity:
+        if boot_mode != 'cloud-init':
+            raise HypervisorError(
+                'host-user-identity requires boot-mode: cloud-init')
+        if not template.insert_key:
+            raise HypervisorError(
+                'host-user-identity requires insert-key: true')
+        host_user = _current_host_user()
+        ssh_user = host_user['name']
+    else:
+        ssh_user = template.ssh_user
     snapshot_mem = os.path.join(snap_dir, 'memory') if using_snapshot else None
 
     # boot-mode + insert-key decide how (or whether) the key reaches the VM
@@ -215,7 +262,9 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
     if insert_key:
         if boot_mode == 'cloud-init':
-            cloud_init_iso = _make_cloud_init_iso(runtime_dir, pubkey, ssh_user=ssh_user)
+            cloud_init_iso = _make_cloud_init_iso(
+                runtime_dir, pubkey, ssh_user=ssh_user,
+                host_user=host_user)
         elif boot_mode == 'vagrant':
             cloud_init_iso = None   # key is rotated post-boot via _rotate_vagrant_key
         else:
@@ -345,7 +394,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
         # 7. Wait for SSH (ephemeral key for both modes)
         if not wait_for_ssh(
-                '127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user):
+                '127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user,
+                authenticate=host_user is not None):
             raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
 
         # 8. Write final metadata and retain live manager handles in memory.

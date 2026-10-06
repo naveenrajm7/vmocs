@@ -36,3 +36,11 @@ def test_template_inherits_network_policy(tmp_path):
     loaded.load(str(templates))
 
     assert loaded['agent'].network == {'restrict': True, 'ipv6': False}
+
+
+def test_host_user_identity_must_be_boolean(tmp_path):
+    templates = tmp_path / 'templates.yaml'
+    templates.write_text('agent:\n  host-user-identity: yes-please\n')
+
+    with pytest.raises(InvalidConfigError, match='must be true or false'):
+        TemplateConfig().load(str(templates))

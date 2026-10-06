@@ -94,6 +94,17 @@ Fields
 
    Typical values: ``ubuntu`` (cloud-init images), ``vagrant`` (Vagrant boxes).
 
+.. describe:: host-user-identity
+
+   When ``true``, ignore ``ssh-user`` and use NoCloud data to create the
+   submitting host user in the guest with the same username, UID, and primary
+   GID.  The generated account receives the per-launch SSH key and passwordless
+   sudo access.  This requires ``boot-mode: cloud-init`` and
+   ``insert-key: true``.  Default: ``false``.
+
+   Matching numeric IDs lets an unprivileged QEMU process expose writable host
+   directories without leaving files owned by a different user.
+
 .. describe:: ssh-timeout
 
    Maximum seconds to wait for SSH to become available after QEMU starts.
@@ -371,7 +382,8 @@ Fields
 
    Map of host directories to share with the guest.  Each entry has a name
    (used as the mount tag inside the guest), a ``path``, and an optional
-   ``type``.
+   ``type``.  A leading ``~`` in ``path`` expands to the submitting user's
+   home directory.
 
    Supported types:
 

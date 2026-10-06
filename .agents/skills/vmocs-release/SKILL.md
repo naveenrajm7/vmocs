@@ -104,8 +104,8 @@ the pull-request CI jobs remain mandatory.
 
 Commit the three metadata files, push the branch, and open a pull request. Its
 description must cover the version, changes, validation, expected release
-assets, and Slurm ABI limitation. Wait for all seven CI checks: Python package,
-Python 3.8/3.10/3.12 tests, SPANK smoke test, Debian package, and RPM package.
+assets, and Slurm ABI limitation. Wait for all six CI checks: Python package,
+Python 3.10/3.12 tests, SPANK smoke test, Debian package, and RPM package.
 Do not merge unless the user authorized it. Otherwise, stop with the PR URL and
 ask them to merge it.
 

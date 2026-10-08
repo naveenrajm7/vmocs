@@ -31,6 +31,13 @@ The plugin registers these options with Slurm clients and remote job steps:
    over SSH.  Select ``none`` to boot the VM, print connection details, and
    wait for QEMU without executing the task command in the guest.
 
+.. option:: --vm-forward-env NAME
+
+   Forward the named Slurm task environment variable to the attached guest
+   command. Repeat for multiple variables. The plugin passes only each name to
+   ``vmocs run``; values remain out of Slurm and SSH command arguments. At
+   most 16 variables may be selected.
+
 All current modes require a job step with exactly one task.  The plugin
 returns an error when Slurm reports a larger task count.
 
@@ -132,7 +139,7 @@ Lifecycle hooks
    * - Hook
      - Action
    * - ``slurm_spank_init``
-     - Register the four Slurm options.
+     - Register the five Slurm options.
    * - ``slurm_spank_init_post_opt``
      - Persist the selected template in the job environment in allocator
        context.

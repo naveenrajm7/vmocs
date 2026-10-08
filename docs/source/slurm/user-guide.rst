@@ -50,6 +50,25 @@ SSH.  The guest command's exit status becomes the ``srun`` exit status.
 Unlike interactive sessions, a non-interactive command is not replayed after
 an SSH transport failure.
 
+Forward bootstrap environment
+-----------------------------
+
+Forward only explicitly selected task variables with repeatable
+``--vm-forward-env`` options::
+
+   export SLURM_GHA_SERVICE_URL=https://service.example
+   export SLURM_GHA_CLAIM_TOKEN=one-time-secret
+   srun -n1 --vm-image base-ubuntu \
+       --vm-forward-env=SLURM_GHA_SERVICE_URL \
+       --vm-forward-env=SLURM_GHA_CLAIM_TOKEN \
+       /opt/slurm-gha/bootstrap.sh
+
+Only variable names are included in ``srun`` and SSH arguments. Values are
+read from the Slurm task environment by ``vmocs run``, transmitted over SSH
+standard input, stored briefly in a ``0600`` file under a private guest tmpfs
+directory, and deleted immediately before the guest command executes. The
+guest command should consume and unset one-time secrets promptly.
+
 Request resources
 -----------------
 
@@ -152,7 +171,8 @@ Current limitations
 -------------------
 
 * A vmocs step must contain exactly one Slurm task (``--ntasks=1``).
-* Host environment variables are not generally copied into the guest.
+* Host environment variables are copied only when explicitly selected with
+  ``--vm-forward-env``.
 * Host paths and the submission working directory are available only when the
   template deliberately shares or otherwise provides them.
 * Direct wrapping of Slurm's private batch-spool script requires matching

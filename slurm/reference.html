@@ -137,6 +137,15 @@ over SSH.  Select <code class="docutils literal notranslate"><span class="pre">n
 wait for QEMU without executing the task command in the guest.</p>
 </dd></dl>
 
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-vm-forward-env">
+<span class="sig-name descname"><span class="pre">--vm-forward-env</span></span><span class="sig-prename descclassname"> <span class="pre">NAME</span></span><a class="headerlink" href="#cmdoption-vm-forward-env" title="Link to this definition"></a></dt>
+<dd><p>Forward the named Slurm task environment variable to the attached guest
+command. Repeat for multiple variables. The plugin passes only each name to
+<code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code>; values remain out of Slurm and SSH command arguments. At
+most 16 variables may be selected.</p>
+</dd></dl>
+
 <p>All current modes require a job step with exactly one task.  The plugin
 returns an error when Slurm reports a larger task count.</p>
 </section>
@@ -247,7 +256,7 @@ GPU-index map.  See <a class="reference internal" href="gpu-passthrough.html"><s
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init</span></code></p></td>
-<td><p>Register the four Slurm options.</p></td>
+<td><p>Register the five Slurm options.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slurm_spank_init_post_opt</span></code></p></td>
 <td><p>Persist the selected template in the job environment in allocator

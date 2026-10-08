@@ -53,6 +53,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#before-starting">Before starting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#run-an-interactive-session">Run an interactive session</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#run-a-non-interactive-command">Run a non-interactive command</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#forward-bootstrap-environment">Forward bootstrap environment</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#request-resources">Request resources</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#use-an-existing-allocation">Use an existing allocation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#submit-a-batch-workflow">Submit a batch workflow</a></li>
@@ -149,6 +150,24 @@ SSH.  The guest command's exit status becomes the <code class="docutils literal 
 Unlike interactive sessions, a non-interactive command is not replayed after
 an SSH transport failure.</p>
 </section>
+<section id="forward-bootstrap-environment">
+<h2>Forward bootstrap environment<a class="headerlink" href="#forward-bootstrap-environment" title="Link to this heading"></a></h2>
+<p>Forward only explicitly selected task variables with repeatable
+<code class="docutils literal notranslate"><span class="pre">--vm-forward-env</span></code> options:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">SLURM_GHA_SERVICE_URL</span><span class="o">=</span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">service</span><span class="o">.</span><span class="n">example</span>
+<span class="n">export</span> <span class="n">SLURM_GHA_CLAIM_TOKEN</span><span class="o">=</span><span class="n">one</span><span class="o">-</span><span class="n">time</span><span class="o">-</span><span class="n">secret</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">forward</span><span class="o">-</span><span class="n">env</span><span class="o">=</span><span class="n">SLURM_GHA_SERVICE_URL</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">forward</span><span class="o">-</span><span class="n">env</span><span class="o">=</span><span class="n">SLURM_GHA_CLAIM_TOKEN</span> \
+    <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">slurm</span><span class="o">-</span><span class="n">gha</span><span class="o">/</span><span class="n">bootstrap</span><span class="o">.</span><span class="n">sh</span>
+</pre></div>
+</div>
+<p>Only variable names are included in <code class="docutils literal notranslate"><span class="pre">srun</span></code> and SSH arguments. Values are
+read from the Slurm task environment by <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code>, transmitted over SSH
+standard input, stored briefly in a <code class="docutils literal notranslate"><span class="pre">0600</span></code> file under a private guest tmpfs
+directory, and deleted immediately before the guest command executes. The
+guest command should consume and unset one-time secrets promptly.</p>
+</section>
 <section id="request-resources">
 <h2>Request resources<a class="headerlink" href="#request-resources" title="Link to this heading"></a></h2>
 <p>Request resources with normal Slurm options:</p>
@@ -244,7 +263,8 @@ setup.</p>
 <h2>Current limitations<a class="headerlink" href="#current-limitations" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p>A vmocs step must contain exactly one Slurm task (<code class="docutils literal notranslate"><span class="pre">--ntasks=1</span></code>).</p></li>
-<li><p>Host environment variables are not generally copied into the guest.</p></li>
+<li><p>Host environment variables are copied only when explicitly selected with
+<code class="docutils literal notranslate"><span class="pre">--vm-forward-env</span></code>.</p></li>
 <li><p>Host paths and the submission working directory are available only when the
 template deliberately shares or otherwise provides them.</p></li>
 <li><p>Direct wrapping of Slurm's private batch-spool script requires matching

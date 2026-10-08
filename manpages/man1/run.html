@@ -168,11 +168,28 @@ state, sidecar state, extra disks, or host-mounted content.</p>
 writable overlay is created, so the checkpoint remains immutable.</p>
 </dd></dl>
 
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-forward-env">
+<span class="sig-name descname"><span class="pre">--forward-env</span></span><span class="sig-prename descclassname"> <span class="pre">NAME</span></span><a class="headerlink" href="#cmdoption-forward-env" title="Link to this definition"></a></dt>
+<dd><p>Forward the named host environment variable to the guest command. Repeat
+for multiple variables. Only the name is placed in process arguments; the
+value is sent over SSH standard input to a private temporary guest file,
+which is deleted immediately before the command executes. Missing or
+invalid names are errors. At most 16 variables and 64 KiB of serialized
+data may be forwarded. Requires <code class="docutils literal notranslate"><span class="pre">--attach</span> <span class="pre">auto</span></code> and a guest command.</p>
+</dd></dl>
+
 </section>
 <section id="examples">
 <h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
 <p>Run a command and return its status:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> <span class="o">--</span> <span class="n">hostname</span>
+</pre></div>
+</div>
+<p>Forward selected bootstrap values without placing their values in argv:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vmocs</span> <span class="n">run</span> <span class="n">base</span><span class="o">-</span><span class="n">ubuntu</span> \
+    <span class="o">--</span><span class="n">forward</span><span class="o">-</span><span class="n">env</span> <span class="n">SERVICE_URL</span> <span class="o">--</span><span class="n">forward</span><span class="o">-</span><span class="n">env</span> <span class="n">CLAIM_TOKEN</span> \
+    <span class="o">--</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">bootstrap</span><span class="o">.</span><span class="n">sh</span>
 </pre></div>
 </div>
 <p>Open an interactive login shell:</p>

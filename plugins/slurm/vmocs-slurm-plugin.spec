@@ -54,6 +54,9 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Thu Oct 08 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.2-1
+- Forward selected environment variables to the guest with --vm-forward-env
+
 * Wed Oct 07 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.1-1
 - Add optional host user identity provisioning for cloud-init guests
 - Expand and resolve home-relative mount paths before sharing them

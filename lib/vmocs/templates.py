@@ -29,6 +29,7 @@ TEMPLATE_SETTINGS = {
     'kernel':        (False, None,       True),
     'gpu':           (False, None,       True),   # 'full', 'sriov', or None
     'ssh-user':      (False, 'root',     True),
+    'host-user-identity': (False, False, True),
     'ssh-timeout':   (False, 120,        True),
     'snapshot':               (False, None,    True),   # path to snapshot dir (memory + disk)
     'firmware':               (False, None,    True),   # path to OVMF_CODE_*.fd; None = BIOS
@@ -118,6 +119,11 @@ class Template:
                 and not isinstance(self.settings['network'], dict)):
             raise InvalidConfigError(
                 f"template '{self.name}' setting 'network' must be a mapping")
+        if ('host-user-identity' in self.settings
+                and not isinstance(self.settings['host-user-identity'], bool)):
+            raise InvalidConfigError(
+                f"template '{self.name}' setting 'host-user-identity' "
+                "must be true or false")
         self._parent = None
         parent_name = self.settings.get('inherits')
         if parent_name:

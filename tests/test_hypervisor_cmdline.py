@@ -3,7 +3,12 @@
 import os
 import pytest
 
-from vmocs.hypervisor import build_qemu_cmdline, block_cmdline, _has_virtiofs
+from vmocs.hypervisor import (
+    _has_virtiofs,
+    _mount_cmdline,
+    block_cmdline,
+    build_qemu_cmdline,
+)
 from vmocs.error import HypervisorError
 from vmocs.sidecars import plan_sidecars
 
@@ -378,6 +383,16 @@ def test_9p_uses_plain_memory_and_fsdev(tmp_path, cow_img):
     assert '-fsdev' in cmd
     assert any('local' in a and 'security_model=none' in a for a in cmd)
     assert any('virtio-9p-pci' in a for a in cmd)
+
+
+def test_9p_expands_submitter_home(tmp_path, monkeypatch):
+    shared = tmp_path / 'shared'
+    shared.mkdir()
+    monkeypatch.setenv('HOME', str(tmp_path))
+
+    cmd = _mount_cmdline({'home': {'path': '~/shared'}})
+
+    assert any(f'path={shared}' in arg for arg in cmd)
 
 
 def test_virtiofs_uses_shared_memory_backend(tmp_path, cow_img):

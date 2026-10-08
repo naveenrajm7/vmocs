@@ -79,6 +79,7 @@ Rebuild the plugin whenever Slurm moves to a new `X.YY` release series.
 | `--vm-save=PATH` | Publish a cold primary-disk checkpoint directory |
 | `--vm-resume=PATH` | Cold-boot from a complete checkpoint directory |
 | `--vm-attach=auto\|none` | Select automatic SSH attachment or VM-as-job mode |
+| `--vm-forward-env=NAME` | Forward a named task variable to the guest command |
 
 See the linked Sphinx reference for resource mapping, plugin arguments, GPU
 discovery, lifecycle hooks, limitations, and failure diagnosis.

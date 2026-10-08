@@ -60,10 +60,10 @@ export SLURM_CONF="$workdir/slurm.conf"
 # If the compiled-in Slurm version were incompatible, the loader would reject
 # the plugin and these options would be absent.
 help_out=$(srun --help 2>&1 || true)
-for opt in --vm-image --vm-save --vm-resume --vm-attach; do
+for opt in --vm-image --vm-save --vm-resume --vm-attach --vm-forward-env; do
     echo "$help_out" | grep -q -- "$opt" || fail "srun --help missing $opt"
 done
-pass "srun --help lists --vm-image, --vm-save, --vm-resume, --vm-attach"
+pass "srun --help lists all vmocs options"
 
 sbatch --help 2>&1 | grep -q -- --vm-image \
     || fail "sbatch --help missing --vm-image"
@@ -76,5 +76,12 @@ fi
 echo "$attach_out" | grep -q "must be 'auto' or 'none'" \
     || fail "expected --vm-attach validation error, got: $attach_out"
 pass "srun rejects an invalid --vm-attach value"
+
+if env_out=$(srun --vm-forward-env=BAD-NAME /bin/true 2>&1); then
+    fail "srun accepted an invalid --vm-forward-env name"
+fi
+echo "$env_out" | grep -q "requires an environment variable name" \
+    || fail "expected --vm-forward-env validation error, got: $env_out"
+pass "srun rejects an invalid --vm-forward-env name"
 
 echo "PASS: slurm plugin smoke test"

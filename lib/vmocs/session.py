@@ -6,6 +6,8 @@
 import os
 import logging
 import queue
+import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -14,6 +16,7 @@ import threading
 import time
 
 from .checkpoint import create_checkpoint
+from .error import VmocsError
 from .launch import (
     _kill_qemu,
     _write_metadata,
@@ -24,8 +27,47 @@ from .launch import (
 from .monitor import QemuMonitor
 
 
-def build_ssh_command(meta, command=(), tty=False):
-    """Build an SSH argv for COMMAND without involving a host-side shell."""
+_ENV_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_MAX_FORWARDED_ENV = 16
+_MAX_FORWARDED_ENV_BYTES = 64 * 1024
+
+
+def resolve_forwarded_env(names, environ=None):
+    """Resolve explicitly selected environment names without accepting values."""
+    environ = os.environ if environ is None else environ
+    resolved = []
+    seen = set()
+    for name in names:
+        if not _ENV_NAME_RE.fullmatch(name):
+            raise ValueError(f'invalid environment variable name: {name!r}')
+        if name in seen:
+            continue
+        if len(resolved) >= _MAX_FORWARDED_ENV:
+            raise ValueError(
+                f'at most {_MAX_FORWARDED_ENV} environment variables may be forwarded')
+        if name not in environ:
+            raise ValueError(
+                f'requested environment variable is not set: {name}')
+        seen.add(name)
+        resolved.append((name, environ[name]))
+
+    payload = _serialize_forwarded_env(resolved)
+    if len(payload) > _MAX_FORWARDED_ENV_BYTES:
+        raise ValueError(
+            f'forwarded environment exceeds {_MAX_FORWARDED_ENV_BYTES} bytes')
+    return tuple(resolved)
+
+
+def _serialize_forwarded_env(environment):
+    """Encode environment assignments as a POSIX shell file."""
+    lines = []
+    for name, value in environment:
+        lines.append(f'{name}={shlex.quote(value)}\nexport {name}\n')
+    return ''.join(lines).encode()
+
+
+def _ssh_base_command(meta, tty=False):
+    """Build the common SSH argv without a remote command."""
     argv = [
         'ssh',
         '-o', 'BatchMode=yes',
@@ -41,11 +83,55 @@ def build_ssh_command(meta, command=(), tty=False):
         '-p', str(meta['ssh_port']),
         f'{meta["ssh_user"]}@127.0.0.1',
     ]
+    return argv
+
+
+def build_ssh_command(meta, command=(), tty=False, env_file=None):
+    """Build an SSH argv for COMMAND without involving a host-side shell."""
+    argv = _ssh_base_command(meta, tty=tty)
     if command:
         # ssh sends a command string to the login shell. shlex.join preserves
         # the original POSIX argv across that required shell boundary.
-        argv.append('exec ' + shlex.join(command))
+        remote_command = 'exec ' + shlex.join(command)
+        if env_file:
+            remote_command = (
+                f'env_file={shlex.quote(env_file)}; '
+                'env_dir=${env_file%/*}; '
+                'cleanup() { rm -f -- "$env_file" 2>/dev/null; '
+                'rmdir -- "$env_dir" 2>/dev/null; }; '
+                'trap cleanup 0 1 2 15; '
+                'if ! . "$env_file"; then exit 125; fi; '
+                'cleanup; trap - 0 1 2 15; ' + remote_command)
+        argv.append(remote_command)
     return argv
+
+
+def _stage_forwarded_env(meta, environment):
+    """Send selected values over SSH stdin into a private guest tmpfs file."""
+    token = secrets.token_hex(16)
+    env_dir = f'/dev/shm/vmocs-env-{token}'
+    env_file = f'{env_dir}/environment'
+    remote_command = (
+        f'env_dir={shlex.quote(env_dir)}; '
+        'env_file="$env_dir/environment"; '
+        'umask 077; '
+        'mkdir -m 700 -- "$env_dir" || exit 1; '
+        'if ! cat > "$env_file"; then '
+        'rm -f -- "$env_file"; rmdir -- "$env_dir"; exit 1; fi; '
+        'chmod 600 -- "$env_file"')
+    try:
+        result = subprocess.run(
+            _ssh_base_command(meta) + [remote_command],
+            input=_serialize_forwarded_env(environment),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False)
+    except OSError as exc:
+        raise VmocsError(
+            'failed to start SSH for environment forwarding') from exc
+    if result.returncode != 0:
+        raise VmocsError('failed to stage forwarded environment in guest')
+    return env_file
 
 
 def _process_alive(pid):
@@ -118,9 +204,10 @@ def _wait_for_qemu(pid, timeout, on_poll=None):
     return False
 
 
-def _run_ssh(meta, command, tty, watcher, stop_requested=None):
+def _run_ssh(meta, command, tty, watcher, stop_requested=None, env_file=None):
     """Run SSH while continuing to supervise critical VM sidecars."""
-    process = subprocess.Popen(build_ssh_command(meta, command, tty=tty))
+    process = subprocess.Popen(
+        build_ssh_command(meta, command, tty=tty, env_file=env_file))
     manager = meta.get('_sidecar_manager')
     while process.poll() is None:
         watcher.drain()
@@ -144,7 +231,7 @@ def _run_ssh(meta, command, tty, watcher, stop_requested=None):
 
 
 def run_attached_session(meta, command=(), reconnect_timeout=180,
-                         save_path=None):
+                         save_path=None, forwarded_env=()):
     """Run COMMAND in the guest and return its exit status.
 
     Interactive sessions reconnect after a QMP RESET or an SSH transport loss
@@ -170,9 +257,12 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
 
     try:
         while True:
+            env_file = None
+            if forwarded_env:
+                env_file = _stage_forwarded_env(meta, forwarded_env)
             status = _run_ssh(
                 meta, command, tty, watcher,
-                stop_requested=stop_event.is_set)
+                stop_requested=stop_event.is_set, env_file=env_file)
             # QMP events and the SSH child's exit can race slightly.
             time.sleep(0.1)
             watcher.drain()

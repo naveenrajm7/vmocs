@@ -25,7 +25,7 @@ from .launch import (
 from .checkpoint import create_checkpoint
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
-from .session import run_attached_session
+from .session import resolve_forwarded_env, run_attached_session
 
 
 def _load(config_path=None):
@@ -207,10 +207,14 @@ def snapshot_create(ctx, template_name, snap_dir, cores, memory):
               help='Publish a cold primary-disk checkpoint directory.')
 @click.option('--resume', 'resume_path', default=None, metavar='CHECKPOINT',
               help='Cold-boot from a complete vmocs checkpoint directory.')
+@click.option('--forward-env', 'forward_env_names', multiple=True,
+              metavar='NAME',
+              help='Forward a named host variable to the guest command. '
+                   'Repeatable.')
 @click.argument('command', nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
 def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
-        save_path, resume_path, command):
+        save_path, resume_path, forward_env_names, command):
     """Launch TEMPLATE_NAME and run COMMAND inside it over SSH."""
     cfg, tpls = _load(ctx.obj['config_path'])
     if template_name not in tpls:
@@ -218,6 +222,15 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
 
     if command and command[0] == '--':
         command = command[1:]
+
+    if forward_env_names and attach != 'auto':
+        raise VmocsError('--forward-env requires --attach=auto')
+    if forward_env_names and not command:
+        raise VmocsError('--forward-env requires a guest command')
+    try:
+        forwarded_env = resolve_forwarded_env(forward_env_names)
+    except ValueError as exc:
+        raise VmocsError(str(exc)) from exc
 
     tpl = tpls[template_name]
     click.echo(f'Launching VM from template {template_name!r} '
@@ -254,7 +267,7 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
 
     status = run_attached_session(
         meta, command, reconnect_timeout=meta['ssh_timeout'],
-        save_path=save_path)
+        save_path=save_path, forwarded_env=forwarded_env)
     raise click.exceptions.Exit(status)
 
 @cli.command()

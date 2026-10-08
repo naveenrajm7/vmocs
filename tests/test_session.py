@@ -1,11 +1,12 @@
 """Unit tests for seamless SSH guest sessions."""
 
+import subprocess
 from unittest.mock import MagicMock
 
 import pytest
 
 from vmocs import session
-from vmocs.session import build_ssh_command
+from vmocs.session import build_ssh_command, resolve_forwarded_env
 
 
 def _meta(key_path='/tmp/vmocs/42/id_ed25519'):
@@ -64,6 +65,86 @@ def test_build_ssh_command_allows_configured_ssh_identity():
 
     assert '-i' not in argv
     assert argv[-1] == 'ubuntu@127.0.0.1'
+
+
+def test_resolve_forwarded_env_is_name_only_and_preserves_values():
+    resolved = resolve_forwarded_env(
+        ('TOKEN', 'URL', 'TOKEN'),
+        {'TOKEN': "line one\nline 'two'", 'URL': 'https://example.test/a?b=c'})
+
+    assert resolved == (
+        ('TOKEN', "line one\nline 'two'"),
+        ('URL', 'https://example.test/a?b=c'))
+
+
+@pytest.mark.parametrize('name', ('', 'BAD-NAME', '1TOKEN', 'A=B'))
+def test_resolve_forwarded_env_rejects_invalid_names(name):
+    with pytest.raises(ValueError, match='invalid environment variable name'):
+        resolve_forwarded_env((name,), {name: 'value'})
+
+
+def test_resolve_forwarded_env_requires_present_value():
+    with pytest.raises(ValueError, match='is not set'):
+        resolve_forwarded_env(('MISSING',), {})
+
+
+def test_resolve_forwarded_env_limits_variable_count():
+    names = tuple(f'VAR_{index}' for index in range(17))
+    environ = {name: 'value' for name in names}
+
+    with pytest.raises(ValueError, match='at most 16'):
+        resolve_forwarded_env(names, environ)
+
+
+def test_resolve_forwarded_env_limits_payload_size():
+    with pytest.raises(ValueError, match='exceeds 65536 bytes'):
+        resolve_forwarded_env(('TOKEN',), {'TOKEN': 'x' * (64 * 1024)})
+
+
+def test_serialized_environment_preserves_shell_metacharacters(tmp_path):
+    marker = tmp_path / 'injected'
+    secret = f"line one\n'line two' $(touch {marker})"
+    env_file = tmp_path / 'environment'
+    env_file.write_bytes(session._serialize_forwarded_env((('TOKEN', secret),)))
+
+    result = subprocess.run(
+        ['/bin/sh', '-c', '. "$1"; printf %s "$TOKEN"', 'sh', str(env_file)],
+        stdout=subprocess.PIPE, check=True)
+
+    assert result.stdout.decode() == secret
+    assert not marker.exists()
+
+
+def test_stage_forwarded_env_keeps_secret_out_of_ssh_argv(monkeypatch):
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured['argv'] = argv
+        captured.update(kwargs)
+        return MagicMock(returncode=0)
+
+    monkeypatch.setattr(session.secrets, 'token_hex', lambda _size: 'abc123')
+    monkeypatch.setattr(session.subprocess, 'run', fake_run)
+    secret = "claim token with 'quotes' and\nnewlines"
+
+    env_file = session._stage_forwarded_env(
+        _meta(), (('SLURM_GHA_CLAIM_TOKEN', secret),))
+
+    assert env_file == '/dev/shm/vmocs-env-abc123/environment'
+    assert secret not in '\0'.join(captured['argv'])
+    assert b'claim token with ' in captured['input']
+    assert b'newlines' in captured['input']
+    assert b'export SLURM_GHA_CLAIM_TOKEN' in captured['input']
+
+
+def test_build_ssh_command_sources_and_removes_staged_environment():
+    argv = build_ssh_command(
+        _meta(), ('/opt/slurm-gha/bootstrap.sh',),
+        env_file='/dev/shm/vmocs-env-abc/environment')
+
+    assert argv[-1].endswith('exec /opt/slurm-gha/bootstrap.sh')
+    assert '. "$env_file"' in argv[-1]
+    assert 'rm -f -- "$env_file"' in argv[-1]
 
 
 def test_process_alive_reaps_exited_qemu(monkeypatch):

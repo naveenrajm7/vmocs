@@ -43,7 +43,9 @@ static char vm_attach[16]       = "auto";
 
 #define MAX_FORWARD_ENV 16
 #define MAX_ENV_NAME 128
+#define MAX_FORWARD_ENV_SERIALIZED (MAX_FORWARD_ENV * MAX_ENV_NAME)
 #define MAX_PREFIX_ARGS 128
+#define FORWARD_ENV_TASK_VAR "SLURM_SPANK_VMOCS_FORWARD_ENV_NAMES"
 
 static char vm_forward_env[MAX_FORWARD_ENV][MAX_ENV_NAME];
 static int  vm_forward_env_count = 0;
@@ -97,15 +99,21 @@ static int valid_env_name(const char *name)
     return 1;
 }
 
-static int opt_vm_forward_env(int val, const char *optarg, int remote)
+static void clear_forward_env_names(void)
+{
+    memset(vm_forward_env, 0, sizeof(vm_forward_env));
+    vm_forward_env_count = 0;
+}
+
+static int add_forward_env_name(const char *name)
 {
     int i;
-    if (!valid_env_name(optarg)) {
+    if (!valid_env_name(name)) {
         slurm_error("vmocs: --vm-forward-env requires an environment variable name");
         return ESPANK_BAD_ARG;
     }
     for (i = 0; i < vm_forward_env_count; i++) {
-        if (strcmp(vm_forward_env[i], optarg) == 0)
+        if (strcmp(vm_forward_env[i], name) == 0)
             return ESPANK_SUCCESS;
     }
     if (vm_forward_env_count >= MAX_FORWARD_ENV) {
@@ -113,11 +121,90 @@ static int opt_vm_forward_env(int val, const char *optarg, int remote)
                     MAX_FORWARD_ENV);
         return ESPANK_BAD_ARG;
     }
-    if (strlen(optarg) >= MAX_ENV_NAME) {
+    if (strlen(name) >= MAX_ENV_NAME) {
         slurm_error("vmocs: --vm-forward-env name is too long");
         return ESPANK_BAD_ARG;
     }
-    strcpy(vm_forward_env[vm_forward_env_count++], optarg);
+    strcpy(vm_forward_env[vm_forward_env_count++], name);
+    return ESPANK_SUCCESS;
+}
+
+static int opt_vm_forward_env(int val, const char *optarg, int remote)
+{
+    return add_forward_env_name(optarg);
+}
+
+static int serialize_forward_env_names(char *buf, size_t buflen)
+{
+    size_t used = 0;
+    int i;
+
+    if (!buf || buflen == 0)
+        return ESPANK_BAD_ARG;
+    buf[0] = '\0';
+
+    for (i = 0; i < vm_forward_env_count; i++) {
+        size_t name_len = strlen(vm_forward_env[i]);
+        size_t required = name_len + (i > 0 ? 1 : 0);
+        if (required >= buflen - used) {
+            slurm_error("vmocs: serialized --vm-forward-env list is too long");
+            return ESPANK_NOSPACE;
+        }
+        if (i > 0)
+            buf[used++] = ',';
+        memcpy(buf + used, vm_forward_env[i], name_len);
+        used += name_len;
+        buf[used] = '\0';
+    }
+    return ESPANK_SUCCESS;
+}
+
+/*
+ * Decode a name-only list produced by serialize_forward_env_names().  The
+ * grammar for environment names makes comma an unambiguous separator.  When
+ * replace is non-zero, discard any individual option occurrences Slurm
+ * replayed remotely; its option cache retains only the final occurrence.
+ */
+static int recover_forward_env_names(const char *serialized, int replace)
+{
+    char copy[MAX_FORWARD_ENV_SERIALIZED];
+    char existing[MAX_FORWARD_ENV][MAX_ENV_NAME];
+    int existing_count = 0;
+    char *cursor;
+
+    if (!serialized || !serialized[0] ||
+        strlen(serialized) >= sizeof(copy)) {
+        slurm_error("vmocs: invalid serialized --vm-forward-env list");
+        return ESPANK_BAD_ARG;
+    }
+
+    if (!replace) {
+        existing_count = vm_forward_env_count;
+        memcpy(existing, vm_forward_env, sizeof(existing));
+    }
+    clear_forward_env_names();
+    strcpy(copy, serialized);
+    cursor = copy;
+
+    while (cursor) {
+        char *next = strchr(cursor, ',');
+        int rc;
+        if (next)
+            *next++ = '\0';
+        if (!cursor[0] || (rc = add_forward_env_name(cursor)) != ESPANK_SUCCESS) {
+            clear_forward_env_names();
+            return cursor[0] ? rc : ESPANK_BAD_ARG;
+        }
+        cursor = next;
+    }
+
+    for (int i = 0; i < existing_count; i++) {
+        int rc = add_forward_env_name(existing[i]);
+        if (rc != ESPANK_SUCCESS) {
+            clear_forward_env_names();
+            return rc;
+        }
+    }
     return ESPANK_SUCCESS;
 }
 
@@ -325,14 +412,47 @@ int slurm_spank_init(spank_t sp, int ac, char **av)
 
 int slurm_spank_init_post_opt(spank_t sp, int ac, char **av)
 {
+    char serialized[MAX_FORWARD_ENV_SERIALIZED];
+    const char *inherited;
+    spank_context_t context;
+    int rc;
+
     if (!vm_enabled) return ESPANK_SUCCESS;
+    context = spank_context();
+
+    /* The task environment can only be changed with libc calls locally. */
+    if (context != S_CTX_LOCAL && context != S_CTX_ALLOCATOR)
+        return ESPANK_SUCCESS;
 
     /*
      * Persist the template name into the job environment so it is available
      * even when the user runs salloc then srun separately.
      */
-    if (spank_context() == S_CTX_ALLOCATOR)
+    if (context == S_CTX_ALLOCATOR)
         spank_job_control_setenv(sp, "VMOCS_TEMPLATE", vm_template, 1);
+
+    /*
+     * Slurm's SPANK option cache retains only the final argument supplied for
+     * a repeatable custom option.  Carry the complete list separately through
+     * the protected SLURM_SPANK_ task environment.  An srun started inside an
+     * salloc inherits the allocator's private list, so merge it before
+     * exporting the step.
+     */
+    inherited = getenv(FORWARD_ENV_TASK_VAR);
+    if (inherited && inherited[0]) {
+        rc = recover_forward_env_names(inherited, 0);
+        if (rc != ESPANK_SUCCESS)
+            return rc;
+    }
+    if (vm_forward_env_count > 0) {
+        rc = serialize_forward_env_names(serialized, sizeof(serialized));
+        if (rc != ESPANK_SUCCESS)
+            return rc;
+        if (setenv(FORWARD_ENV_TASK_VAR, serialized, 1) < 0) {
+            slurm_error("vmocs: failed to preserve --vm-forward-env list");
+            return ESPANK_ERROR;
+        }
+    }
 
     return ESPANK_SUCCESS;
 }
@@ -352,6 +472,7 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
     char     cores_arg[32];
     char     memory_arg[32];
     char     jobid_arg[32];
+    char     serialized[MAX_FORWARD_ENV_SERIALIZED];
     char    *saveptr = NULL;
     char    *token;
     const char *prefix[MAX_PREFIX_ARGS];
@@ -359,8 +480,23 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
     int      prefix_count = 0;
     long     cores  = 1;
     long     mem_mb;
+    int      rc;
 
     if (!vm_enabled) return ESPANK_SUCCESS;
+
+    /* Prefer the complete locally serialized list over Slurm's lossy replay. */
+    rc = spank_getenv(sp, FORWARD_ENV_TASK_VAR, serialized,
+                      sizeof(serialized));
+    if (rc == ESPANK_SUCCESS) {
+        rc = recover_forward_env_names(serialized, 1);
+        if (rc != ESPANK_SUCCESS)
+            return rc;
+        /* Keep the private transport detail out of the launched task env. */
+        spank_unsetenv(sp, FORWARD_ENV_TASK_VAR);
+    } else if (rc != ESPANK_ENV_NOEXIST) {
+        slurm_error("vmocs: failed to recover --vm-forward-env list");
+        return rc;
+    }
 
     spank_get_item(sp, S_JOB_ID, &jobid);
     if (spank_get_item(sp, S_JOB_TOTAL_TASK_COUNT, &ntasks) == ESPANK_SUCCESS &&

@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -39,6 +40,13 @@ static char vm_template[256]    = "";
 static char vm_save_path[1024]  = "";
 static char vm_resume_path[1024] = "";
 static char vm_attach[16]       = "auto";
+
+#define MAX_FORWARD_ENV 16
+#define MAX_ENV_NAME 128
+#define MAX_PREFIX_ARGS 128
+
+static char vm_forward_env[MAX_FORWARD_ENV][MAX_ENV_NAME];
+static int  vm_forward_env_count = 0;
 
 /* -------------------------------------------------------------------------
  * Option handler — called when --vm-image is seen
@@ -77,6 +85,42 @@ static int opt_vm_attach(int val, const char *optarg, int remote)
     return ESPANK_SUCCESS;
 }
 
+static int valid_env_name(const char *name)
+{
+    const unsigned char *p = (const unsigned char *)name;
+    if (!name || !p[0] || !(isalpha(p[0]) || p[0] == '_'))
+        return 0;
+    for (p++; *p; p++) {
+        if (!(isalnum(*p) || *p == '_'))
+            return 0;
+    }
+    return 1;
+}
+
+static int opt_vm_forward_env(int val, const char *optarg, int remote)
+{
+    int i;
+    if (!valid_env_name(optarg)) {
+        slurm_error("vmocs: --vm-forward-env requires an environment variable name");
+        return ESPANK_BAD_ARG;
+    }
+    for (i = 0; i < vm_forward_env_count; i++) {
+        if (strcmp(vm_forward_env[i], optarg) == 0)
+            return ESPANK_SUCCESS;
+    }
+    if (vm_forward_env_count >= MAX_FORWARD_ENV) {
+        slurm_error("vmocs: at most %d --vm-forward-env options are allowed",
+                    MAX_FORWARD_ENV);
+        return ESPANK_BAD_ARG;
+    }
+    if (strlen(optarg) >= MAX_ENV_NAME) {
+        slurm_error("vmocs: --vm-forward-env name is too long");
+        return ESPANK_BAD_ARG;
+    }
+    strcpy(vm_forward_env[vm_forward_env_count++], optarg);
+    return ESPANK_SUCCESS;
+}
+
 static struct spank_option vmocs_options[] = {
     {
         "vm-image",
@@ -109,6 +153,14 @@ static struct spank_option vmocs_options[] = {
         1,
         0,
         (spank_opt_cb_f) opt_vm_attach
+    },
+    {
+        "vm-forward-env",
+        "NAME",
+        "[vmocs] Forward a named task environment variable to the guest command",
+        1,
+        0,
+        (spank_opt_cb_f) opt_vm_forward_env
     },
     SPANK_OPTIONS_TABLE_END
 };
@@ -302,7 +354,7 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
     char     jobid_arg[32];
     char    *saveptr = NULL;
     char    *token;
-    const char *prefix[64];
+    const char *prefix[MAX_PREFIX_ARGS];
     const char *conf_path;
     int      prefix_count = 0;
     long     cores  = 1;
@@ -352,9 +404,13 @@ int slurm_spank_task_init(spank_t sp, int ac, char **av)
         prefix[prefix_count++] = "--resume";
         prefix[prefix_count++] = vm_resume_path;
     }
+    for (int i = 0; i < vm_forward_env_count; i++) {
+        prefix[prefix_count++] = "--forward-env";
+        prefix[prefix_count++] = vm_forward_env[i];
+    }
 
     token = strtok_r(pci_args, " ", &saveptr);
-    while (token && prefix_count < 62) {
+    while (token && prefix_count < MAX_PREFIX_ARGS - 2) {
         prefix[prefix_count++] = token;
         token = strtok_r(NULL, " ", &saveptr);
     }

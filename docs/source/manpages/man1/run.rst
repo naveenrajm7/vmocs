@@ -60,12 +60,27 @@ Options
    Cold-boot from a complete checkpoint created from the same template.  A new
    writable overlay is created, so the checkpoint remains immutable.
 
+.. option:: --forward-env NAME
+
+   Forward the named host environment variable to the guest command. Repeat
+   for multiple variables. Only the name is placed in process arguments; the
+   value is sent over SSH standard input to a private temporary guest file,
+   which is deleted immediately before the command executes. Missing or
+   invalid names are errors. At most 16 variables and 64 KiB of serialized
+   data may be forwarded. Requires ``--attach auto`` and a guest command.
+
 Examples
 --------
 
 Run a command and return its status::
 
    vmocs run base-ubuntu -- hostname
+
+Forward selected bootstrap values without placing their values in argv::
+
+   vmocs run base-ubuntu \
+       --forward-env SERVICE_URL --forward-env CLAIM_TOKEN \
+       -- /opt/service/bootstrap.sh
 
 Open an interactive login shell::
 

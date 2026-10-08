@@ -202,6 +202,18 @@ Windows, BSD, or any image following the Vagrant convention.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">host-user-identity</span></span></dt>
+<dd><p>When <code class="docutils literal notranslate"><span class="pre">true</span></code>, ignore <code class="docutils literal notranslate"><span class="pre">ssh-user</span></code> and use NoCloud data to create the
+submitting host user in the guest with the same username, UID, and primary
+GID.  The generated account receives the per-launch SSH key and passwordless
+sudo access.  This requires <code class="docutils literal notranslate"><span class="pre">boot-mode:</span> <span class="pre">cloud-init</span></code> and
+<code class="docutils literal notranslate"><span class="pre">insert-key:</span> <span class="pre">true</span></code>.  Default: <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
+<p>Matching numeric IDs lets an unprivileged QEMU process expose writable host
+directories without leaving files owned by a different user.</p>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">ssh-timeout</span></span></dt>
 <dd><p>Maximum seconds to wait for SSH to become available after QEMU starts.
 Default: <code class="docutils literal notranslate"><span class="pre">120</span></code>.</p>
@@ -520,7 +532,8 @@ When set, vmocs passes <code class="docutils literal notranslate"><span class="p
 <span class="sig-name descname"><span class="pre">mount-points</span></span></dt>
 <dd><p>Map of host directories to share with the guest.  Each entry has a name
 (used as the mount tag inside the guest), a <code class="docutils literal notranslate"><span class="pre">path</span></code>, and an optional
-<code class="docutils literal notranslate"><span class="pre">type</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">type</span></code>.  A leading <code class="docutils literal notranslate"><span class="pre">~</span></code> in <code class="docutils literal notranslate"><span class="pre">path</span></code> expands to the submitting user's
+home directory.</p>
 <p>Supported types:</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">virtio-9p</span></code> <em>(default)</em></dt><dd><p>Built into QEMU, no extra daemon required.  Supports <code class="docutils literal notranslate"><span class="pre">readonly:</span> <span class="pre">true</span></code>.</p>

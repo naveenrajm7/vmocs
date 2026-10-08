@@ -14,6 +14,8 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 plugin_dir="$repo_root/plugins/slurm"
 plugin_so="$plugin_dir/spank_vmocs.so"
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "ok: $*"; }
@@ -24,6 +26,13 @@ make -C "$plugin_dir" clean >/dev/null
 make -C "$plugin_dir" CFLAGS="-std=gnu11 -O2 -Wall -Werror -fstack-protector-strong -fPIC"
 [ -f "$plugin_so" ] || fail "plugin was not built at $plugin_so"
 pass "compiled with -Werror"
+
+echo "== repeatable option context transport =="
+cc -std=gnu11 -O2 -Wall -Werror -I/usr/include \
+    "$repo_root/tests/spank-forward-env-test.c" \
+    -o "$workdir/spank-forward-env-test"
+"$workdir/spank-forward-env-test"
+pass "preserves repeated names across direct, nested, and allocator contexts"
 
 echo "== exported symbols =="
 defined=$(nm -D --defined-only "$plugin_so")
@@ -42,8 +51,6 @@ nm -D --undefined-only "$plugin_so" | grep -qw spank_prepend_task_argv \
 pass "references spank_prepend_task_argv"
 
 echo "== option registration and validation =="
-workdir=$(mktemp -d)
-trap 'rm -rf "$workdir"' EXIT
 cat >"$workdir/plugstack.conf" <<EOF
 optional $plugin_so
 EOF

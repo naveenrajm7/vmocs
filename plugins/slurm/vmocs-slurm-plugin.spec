@@ -54,6 +54,9 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Thu Oct 08 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.3-1
+- Preserve repeated --vm-forward-env names across every SPANK context
+
 * Thu Oct 08 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.2-1
 - Forward selected environment variables to the guest with --vm-forward-env
 

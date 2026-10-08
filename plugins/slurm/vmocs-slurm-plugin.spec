@@ -54,6 +54,10 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Wed Oct 07 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.1-1
+- Add optional host user identity provisioning for cloud-init guests
+- Expand and resolve home-relative mount paths before sharing them
+
 * Fri Sep 25 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.0-1
 - Add supervised sessions, sidecars, checkpoints, and network policies
 - Publish RPM as an automated GitHub release asset

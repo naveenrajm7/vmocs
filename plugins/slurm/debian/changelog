@@ -1,3 +1,10 @@
+vmocs-slurm-plugin (0.1.1) unstable; urgency=medium
+
+  * Add optional host user identity provisioning for cloud-init guests.
+  * Expand and resolve home-relative mount paths before sharing them.
+
+ -- Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com>  Wed, 07 Oct 2026 12:00:00 -0600
+
 vmocs-slurm-plugin (0.1.0) unstable; urgency=medium
 
   * Add supervised guest sessions, VM sidecars, checkpoint save/resume, and

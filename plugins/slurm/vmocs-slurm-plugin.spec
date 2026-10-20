@@ -54,6 +54,9 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Tue Oct 20 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.4-1
+- Add configurable SSH command syntax and Windows OpenSSH argument quoting
+
 * Thu Oct 08 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.3-1
 - Preserve repeated --vm-forward-env names across every SPANK context
 

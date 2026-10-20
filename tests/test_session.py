@@ -60,6 +60,31 @@ def test_build_ssh_command_requests_tty_for_interactive_session():
     assert argv[-1] == "exec bash -l"
 
 
+def test_build_ssh_command_uses_windows_command_line_without_exec():
+    meta = _meta()
+    meta['ssh_command_style'] = 'windows'
+
+    argv = build_ssh_command(
+        meta, ('powershell.exe', '-NoLogo', '-Command',
+               'Write-Output "Hello from Windows"'), tty=True)
+
+    assert '-tt' in argv
+    assert argv[-1] == (
+        'powershell.exe -NoLogo -Command '
+        '"Write-Output \\"Hello from Windows\\""')
+
+
+def test_build_ssh_command_rejects_env_file_for_windows():
+    meta = _meta()
+    meta['ssh_command_style'] = 'windows'
+
+    with pytest.raises(
+            session.VmocsError,
+            match='environment forwarding is not supported for Windows'):
+        build_ssh_command(
+            meta, ('powershell.exe',), env_file='C:\\Temp\\environment')
+
+
 def test_build_ssh_command_allows_configured_ssh_identity():
     argv = build_ssh_command(_meta(key_path=None), ())
 

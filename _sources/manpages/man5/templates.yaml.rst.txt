@@ -94,6 +94,16 @@ Fields
 
    Typical values: ``ubuntu`` (cloud-init images), ``vagrant`` (Vagrant boxes).
 
+.. describe:: ssh-command-style
+
+   Syntax used to construct attached guest commands. Use ``posix`` (the
+   default) for Linux and other POSIX guests. Use ``windows`` for Windows
+   OpenSSH guests so vmocs applies Windows argument quoting and does not emit
+   the POSIX ``exec`` keyword. Environment forwarding is currently available
+   only with ``posix``. Example::
+
+      ssh-command-style: windows
+
 .. describe:: host-user-identity
 
    When ``true``, ignore ``ssh-user`` and use NoCloud data to create the

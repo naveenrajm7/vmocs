@@ -202,6 +202,19 @@ Windows, BSD, or any image following the Vagrant convention.</p>
 
 <dl class="describe">
 <dt class="sig sig-object">
+<span class="sig-name descname"><span class="pre">ssh-command-style</span></span></dt>
+<dd><p>Syntax used to construct attached guest commands. Use <code class="docutils literal notranslate"><span class="pre">posix</span></code> (the
+default) for Linux and other POSIX guests. Use <code class="docutils literal notranslate"><span class="pre">windows</span></code> for Windows
+OpenSSH guests so vmocs applies Windows argument quoting and does not emit
+the POSIX <code class="docutils literal notranslate"><span class="pre">exec</span></code> keyword. Environment forwarding is currently available
+only with <code class="docutils literal notranslate"><span class="pre">posix</span></code>. Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ssh</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">style</span><span class="p">:</span> <span class="n">windows</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="describe">
+<dt class="sig sig-object">
 <span class="sig-name descname"><span class="pre">host-user-identity</span></span></dt>
 <dd><p>When <code class="docutils literal notranslate"><span class="pre">true</span></code>, ignore <code class="docutils literal notranslate"><span class="pre">ssh-user</span></code> and use NoCloud data to create the
 submitting host user in the guest with the same username, UID, and primary

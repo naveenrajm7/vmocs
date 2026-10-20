@@ -90,9 +90,20 @@ def build_ssh_command(meta, command=(), tty=False, env_file=None):
     """Build an SSH argv for COMMAND without involving a host-side shell."""
     argv = _ssh_base_command(meta, tty=tty)
     if command:
-        # ssh sends a command string to the login shell. shlex.join preserves
-        # the original POSIX argv across that required shell boundary.
-        remote_command = 'exec ' + shlex.join(command)
+        command_style = meta.get('ssh_command_style', 'posix')
+        if command_style == 'windows':
+            if env_file:
+                raise VmocsError(
+                    'environment forwarding is not supported for Windows guests')
+            # Windows OpenSSH passes the command string to cmd.exe.  It has no
+            # POSIX `exec` builtin, and its argv quoting follows the Microsoft
+            # command-line rules implemented by list2cmdline().
+            remote_command = subprocess.list2cmdline(command)
+        else:
+            # ssh sends a command string to the login shell. shlex.join
+            # preserves the original POSIX argv across that required shell
+            # boundary, and exec keeps signals attached to the guest process.
+            remote_command = 'exec ' + shlex.join(command)
         if env_file:
             remote_command = (
                 f'env_file={shlex.quote(env_file)}; '

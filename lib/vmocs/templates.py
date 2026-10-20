@@ -29,6 +29,7 @@ TEMPLATE_SETTINGS = {
     'kernel':        (False, None,       True),
     'gpu':           (False, None,       True),   # 'full', 'sriov', or None
     'ssh-user':      (False, 'root',     True),
+    'ssh-command-style': (False, 'posix', True),  # 'posix' or 'windows'
     'host-user-identity': (False, False, True),
     'ssh-timeout':   (False, 120,        True),
     'snapshot':               (False, None,    True),   # path to snapshot dir (memory + disk)
@@ -124,6 +125,11 @@ class Template:
             raise InvalidConfigError(
                 f"template '{self.name}' setting 'host-user-identity' "
                 "must be true or false")
+        command_style = self.settings.get('ssh-command-style')
+        if command_style not in (None, 'posix', 'windows'):
+            raise InvalidConfigError(
+                f"template '{self.name}' setting 'ssh-command-style' must "
+                "be 'posix' or 'windows'")
         self._parent = None
         parent_name = self.settings.get('inherits')
         if parent_name:

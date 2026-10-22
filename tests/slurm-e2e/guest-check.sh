@@ -5,9 +5,10 @@ echo '=== guest PCI devices ==='
 lspci -Dnn
 
 # IDs are package-specific observations, not part of the vmocs configuration
-# contract. rocm-ernic builds used in the two bring-ups advertised either the
-# upstream ionic ID or the earlier Pensando ID. Both prove the NIC attached.
-if ! lspci -Dnnd 1022:8001 | grep -q . && \
+# contract. rocm-ernic builds have advertised the registered emulated RDMA NIC
+# ID, the upstream ionic ID, or the earlier Pensando ID. All prove attachment.
+if ! lspci -Dnnd 1dd8:1002 | grep -q . && \
+   ! lspci -Dnnd 1022:8001 | grep -q . && \
    ! lspci -Dnnd 1dd8:100a | grep -q .; then
     echo 'rocm-ernic PCI function not found' >&2
     exit 1

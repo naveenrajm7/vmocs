@@ -1,3 +1,12 @@
+vmocs-slurm-plugin (0.1.5) unstable; urgency=medium
+
+  * Preserve submitting-user ownership for checkpoints saved by root cleanup.
+  * Complete saves after clean TPM-backed shutdown and tolerate teardown races.
+  * Scope QEMU -no-shutdown to supervised sessions and surface startup logs.
+  * Honor VMOCS_CONFIG for manual commands on compute nodes.
+
+ -- Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com>  Sun, 25 Oct 2026 01:24:03 -0600
+
 vmocs-slurm-plugin (0.1.4) unstable; urgency=medium
 
   * Add configurable SSH command syntax and Windows OpenSSH argument quoting.

@@ -226,7 +226,8 @@ def _run_ssh(meta, command, tty, watcher, stop_requested=None, env_file=None):
             process.terminate()
             break
         failure = manager.failure() if manager is not None else None
-        if failure and not is_vm_stopping(meta['runtime_dir']):
+        if (failure and watcher.guest_shutdown is not True
+                and not is_vm_stopping(meta['runtime_dir'])):
             name, status = failure
             logging.error(
                 'critical sidecar %s exited with status %s; stopping VM',

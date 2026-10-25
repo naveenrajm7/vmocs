@@ -299,6 +299,26 @@ def test_sidecar_exit_during_external_stop_does_not_fail_ssh(
     process.terminate.assert_not_called()
 
 
+def test_sidecar_exit_after_guest_shutdown_is_not_a_failure(monkeypatch):
+    process = MagicMock()
+    process.poll.side_effect = [None, 0]
+    process.wait.return_value = 0
+    monkeypatch.setattr(session.subprocess, 'Popen', lambda _argv: process)
+    monkeypatch.setattr(session.time, 'sleep', lambda _delay: None)
+
+    watcher = MagicMock()
+    watcher.guest_shutdown = True
+    manager = MagicMock()
+    manager.failure.return_value = ('swtpm', 0)
+    meta = _meta()
+    meta['runtime_dir'] = '/tmp/nonexistent-vmocs-test-runtime'
+    meta['_sidecar_manager'] = manager
+
+    assert session._run_ssh(meta, ('true',), False, watcher) == 0
+    watcher.monitor.quit.assert_not_called()
+    process.terminate.assert_not_called()
+
+
 def test_stop_request_terminates_ssh_without_waiting_for_transport(monkeypatch):
     process = MagicMock()
     process.poll.return_value = None

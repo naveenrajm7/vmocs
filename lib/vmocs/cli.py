@@ -55,6 +55,7 @@ def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
     _attempts = [0]
     _timer = [None]
     sidecar_failure = [None]
+    clean_sidecar_exit_at = [None]
 
     def _cancel_timer():
         if _timer[0]:
@@ -81,7 +82,14 @@ def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
             _timer[0].start()
         else:
             _send_qmp(lambda m: m.quit())
-            threading.Timer(5, os.kill, [qemu_pid, 9]).start()
+            def _kill_if_alive():
+                try:
+                    os.kill(qemu_pid, 9)
+                except ProcessLookupError:
+                    pass
+            timer = threading.Timer(5, _kill_if_alive)
+            timer.daemon = True
+            timer.start()
 
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
@@ -99,6 +107,17 @@ def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
                 if failure and not is_vm_stopping(
                         os.path.dirname(qmp_socket)):
                     name, status = failure
+                    # Sidecars such as swtpm may exit cleanly just before QEMU
+                    # completes a guest-initiated shutdown. Give QEMU one
+                    # short polling interval to confirm that happy path.
+                    if status == 0 and clean_sidecar_exit_at[0] is None:
+                        clean_sidecar_exit_at[0] = time.monotonic()
+                        time.sleep(0.2)
+                        continue
+                    if (status == 0 and time.monotonic()
+                            - clean_sidecar_exit_at[0] < 1.0):
+                        time.sleep(0.2)
+                        continue
                     sidecar_failure[0] = failure
                     click.echo(
                         f'Error: critical sidecar {name} exited with status '

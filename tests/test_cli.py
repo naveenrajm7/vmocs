@@ -63,3 +63,15 @@ def test_blocking_launch_accepts_sidecar_exit_during_external_stop(
     cli._block_until_exit(pid, str(tmp_path / 'qmp.sock'), manager)
 
     kill.assert_not_called()
+
+
+def test_blocking_launch_accepts_clean_sidecar_exit_as_qemu_exits(monkeypatch):
+    pid = 4321
+    waits = iter([(0, 0), (pid, 0)])
+    monkeypatch.setattr(cli.signal, 'signal', lambda *_args: None)
+    monkeypatch.setattr(cli.os, 'waitpid', lambda *_args: next(waits))
+    monkeypatch.setattr(cli.time, 'sleep', lambda _delay: None)
+    manager = MagicMock()
+    manager.failure.return_value = ('swtpm', 0)
+
+    cli._block_until_exit(pid, '/tmp/qmp.sock', manager)

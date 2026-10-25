@@ -1,6 +1,6 @@
 """Tests for VM launch readiness helpers."""
 
-from vmocs.launch import wait_for_ssh
+from vmocs.launch import _write_metadata, wait_for_ssh
 
 
 class _BannerSocket:
@@ -31,3 +31,10 @@ def test_authenticated_ssh_readiness_retries_login(monkeypatch):
     assert len(calls) == 2
     assert '-i' in calls[0]
     assert 'cluster-user@127.0.0.1' in calls[0]
+
+
+def test_metadata_write_can_tolerate_removed_runtime(tmp_path):
+    runtime = tmp_path / 'already-removed'
+
+    assert _write_metadata(str(runtime), {'state': 'stopping'},
+                           missing_ok=True) is False

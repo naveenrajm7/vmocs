@@ -196,6 +196,7 @@ def create_checkpoint(meta, path=None):
     if VMImage.image_format(source) != 'qcow2':
         raise ImageError(f'VM overlay is not qcow2: {source}')
     VMImage.check(source)
+    source_stat = os.stat(source)
 
     parent = os.path.dirname(destination)
     os.makedirs(parent, mode=0o700, exist_ok=True)
@@ -259,6 +260,13 @@ def create_checkpoint(meta, path=None):
             stream.write(f'{manifest["checkpoint_id"]}\n')
             stream.flush()
             os.fsync(stream.fileno())
+
+        # A Slurm exit hook may perform the fallback save as root.  Keep the
+        # published bundle accessible to the owner of the job-created overlay.
+        if os.geteuid() == 0 and source_stat.st_uid != 0:
+            for checkpoint_file in (disk, manifest_path, complete_path):
+                os.chown(checkpoint_file, source_stat.st_uid, source_stat.st_gid)
+            os.chown(temporary, source_stat.st_uid, source_stat.st_gid)
         _fsync_file(disk)
         _fsync_directory(temporary)
 

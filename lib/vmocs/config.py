@@ -8,6 +8,9 @@ from .error import InvalidConfigError
 
 def _default_config_path():
     # 1. Env override
+    if 'VMOCS_CONFIG' in os.environ:
+        return os.environ['VMOCS_CONFIG']
+    # Backward-compatible name used by older deployments.
     if 'VMOCS_CONF' in os.environ:
         return os.environ['VMOCS_CONF']
     # 2. confs/vmocs.yaml relative to cwd (development / in-tree)

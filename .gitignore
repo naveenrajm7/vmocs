@@ -8,6 +8,9 @@ build/
 .claude/
 *.so
 
+# Local development workspaces and generated demos
+development/*/
+
 # SLURM plugin build and packaging artifacts
 plugins/slurm/*.o
 plugins/slurm/*.d

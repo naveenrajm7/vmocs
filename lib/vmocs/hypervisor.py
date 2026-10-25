@@ -633,13 +633,16 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
         else:
             cmd += ['-device', f'vfio-pci,host={bdf}{romfile}']
 
-    # Custom args from template
-    if template.custom_args:
-        cmd += template.custom_args
+    # Lifecycle ownership belongs to the active frontend. A template may
+    # carry this flag for compatibility, but it must not keep QEMU alive in
+    # unattached mode where no QMP lifecycle watcher consumes SHUTDOWN.
+    custom_args = [arg for arg in (template.custom_args or [])
+                   if arg != '-no-shutdown']
+    cmd += custom_args
 
     # A supervised session consumes QMP RESET/SHUTDOWN events. Keep QEMU alive
     # long enough for the supervisor to distinguish reboot from poweroff.
-    if supervised and '-no-shutdown' not in cmd:
+    if supervised:
         cmd += ['-no-shutdown']
 
     return cmd

@@ -54,6 +54,12 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Sun Oct 25 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.5-1
+- Preserve user ownership for checkpoints saved by root cleanup
+- Complete saves after clean TPM shutdown and tolerate teardown races
+- Scope -no-shutdown to supervised sessions and surface QEMU startup logs
+- Honor VMOCS_CONFIG for manual commands on compute nodes
+
 * Tue Oct 20 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.4-1
 - Add configurable SSH command syntax and Windows OpenSSH argument quoting
 

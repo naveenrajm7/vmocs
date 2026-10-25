@@ -51,23 +51,33 @@ def _current_host_user():
     return {'name': username, 'uid': uid, 'gid': gid}
 
 
-def _write_metadata(runtime_dir, meta):
+def _write_metadata(runtime_dir, meta, missing_ok=False):
     """Atomically persist public VM state."""
     path = os.path.join(runtime_dir, 'vm.json')
     temp_path = path + '.tmp'
     public = {key: value for key, value in meta.items()
               if not key.startswith('_')}
-    with open(temp_path, 'w') as stream:
-        json.dump(public, stream, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temp_path, path)
-    descriptor = os.open(
-        runtime_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
     try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+        with open(temp_path, 'w') as stream:
+            json.dump(public, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+        descriptor = os.open(
+            runtime_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        return True
+    except FileNotFoundError:
+        if not missing_ok:
+            raise
+        try:
+            os.unlink(temp_path)
+        except FileNotFoundError:
+            pass
+        return False
 
 
 def is_vm_stopping(runtime_dir):
@@ -378,7 +388,19 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
         # 6. Connect QMP and start VM (pcocc:1676-1723)
         logging.info('Waiting for QEMU monitor...')
-        mon = wait_for_monitor(qmp_socket, timeout=30)
+        try:
+            mon = wait_for_monitor(qmp_socket, timeout=30)
+        except HypervisorError as exc:
+            log_path = os.path.join(runtime_dir, 'qemu.log')
+            try:
+                with open(log_path, errors='replace') as stream:
+                    qemu_log = stream.read().strip()
+            except OSError:
+                qemu_log = ''
+            if qemu_log:
+                raise HypervisorError(
+                    f'{exc}; QEMU startup log: {qemu_log[-4096:]}') from exc
+            raise
 
         # Snapshot restore: wait for incoming migration to finish, then cont
         if using_snapshot:
@@ -490,7 +512,11 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
     # Publish intent before QEMU closes its sidecar connections. A blocking
     # supervisor can then distinguish expected shutdown exits from failures.
     meta['state'] = 'stopping'
-    _write_metadata(runtime_dir, meta)
+    if not _write_metadata(runtime_dir, meta, missing_ok=True):
+        if requested_save:
+            raise HypervisorError(
+                'VM runtime disappeared before the checkpoint could be saved')
+        return meta
 
     pid = meta.get('pid')
 
@@ -508,10 +534,12 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
         stop_vm_sidecars(meta)
         if requested_save:
             meta['state'] = 'checkpointing'
-            _write_metadata(runtime_dir, meta)
+            if not _write_metadata(runtime_dir, meta, missing_ok=True):
+                raise HypervisorError(
+                    'VM runtime disappeared before the checkpoint could be saved')
             create_checkpoint(meta, requested_save)
             meta['state'] = 'checkpointed'
-            _write_metadata(runtime_dir, meta)
+            _write_metadata(runtime_dir, meta, missing_ok=True)
         remove_runtime = True
     finally:
         # Sidecar cleanup is idempotent and must still happen after a failed

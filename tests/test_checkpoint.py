@@ -50,6 +50,23 @@ def test_create_checkpoint_atomically_publishes_thin_disk(monkeypatch, tmp_path)
     assert not list((tmp_path / 'checkpoints').glob('.step-1.partial-*'))
 
 
+def test_root_fallback_save_preserves_overlay_ownership(monkeypatch, tmp_path):
+    _mock_qemu_img(monkeypatch)
+    meta = _meta(tmp_path)
+    destination = tmp_path / 'checkpoint'
+    owner = (tmp_path / 'runtime' / 'disk.qcow2').stat()
+    changed = []
+    monkeypatch.setattr('vmocs.checkpoint.os.geteuid', lambda: 0)
+    monkeypatch.setattr(
+        'vmocs.checkpoint.os.chown',
+        lambda path, uid, gid: changed.append((path, uid, gid)))
+
+    create_checkpoint(meta, str(destination))
+
+    assert len(changed) == 4
+    assert all(item[1:] == (owner.st_uid, owner.st_gid) for item in changed)
+
+
 def test_load_checkpoint_rejects_partial_bundle(tmp_path):
     destination = tmp_path / 'partial'
     destination.mkdir()

@@ -3,6 +3,7 @@
 import pytest
 
 from vmocs.config import Config
+from vmocs.config import _default_config_path
 from vmocs.error import InvalidConfigError
 from vmocs.templates import TemplateConfig
 
@@ -13,6 +14,13 @@ def test_global_network_must_be_a_mapping(tmp_path):
 
     with pytest.raises(InvalidConfigError, match="'network' must be a mapping"):
         Config(str(config))
+
+
+def test_vmocs_config_environment_takes_precedence(monkeypatch):
+    monkeypatch.setenv('VMOCS_CONF', '/legacy/vmocs.yaml')
+    monkeypatch.setenv('VMOCS_CONFIG', '/cluster/vmocs/vmocs.yaml')
+
+    assert _default_config_path() == '/cluster/vmocs/vmocs.yaml'
 
 
 def test_template_network_must_be_a_mapping(tmp_path):

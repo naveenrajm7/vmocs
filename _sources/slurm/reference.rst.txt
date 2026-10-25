@@ -29,7 +29,9 @@ The plugin registers these options with Slurm clients and remote job steps:
 
    Select ``auto`` (the default) to run the Slurm task command inside the guest
    over SSH.  Select ``none`` to boot the VM, print connection details, and
-   wait for QEMU without executing the task command in the guest.
+   wait for QEMU without executing the task command in the guest. Slurm itself
+   still requires a task command; pass a harmless placeholder such as
+   ``/bin/true``.
 
 .. option:: --vm-forward-env NAME
 

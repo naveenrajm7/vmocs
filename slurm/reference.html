@@ -134,7 +134,9 @@ a new writable overlay and never mutates <em>CHECKPOINT</em>.</p>
 <span class="sig-name descname"><span class="pre">--vm-attach</span></span><span class="sig-prename descclassname"> <span class="pre">MODE</span></span><a class="headerlink" href="#cmdoption-vm-attach" title="Link to this definition"></a></dt>
 <dd><p>Select <code class="docutils literal notranslate"><span class="pre">auto</span></code> (the default) to run the Slurm task command inside the guest
 over SSH.  Select <code class="docutils literal notranslate"><span class="pre">none</span></code> to boot the VM, print connection details, and
-wait for QEMU without executing the task command in the guest.</p>
+wait for QEMU without executing the task command in the guest. Slurm itself
+still requires a task command; pass a harmless placeholder such as
+<code class="docutils literal notranslate"><span class="pre">/bin/true</span></code>.</p>
 </dd></dl>
 
 <dl class="std option">

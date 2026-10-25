@@ -18,9 +18,10 @@ configuration.
 The configuration file is resolved in the following order:
 
 1. ``--config PATH`` command-line option
-2. ``VMOCS_CONF`` environment variable
-3. ``confs/vmocs.yaml`` relative to the current working directory
-4. ``/etc/vmocs/vmocs.yaml`` (system-wide fallback)
+2. ``VMOCS_CONFIG`` environment variable
+3. legacy ``VMOCS_CONF`` environment variable
+4. ``confs/vmocs.yaml`` relative to the current working directory
+5. ``/etc/vmocs/vmocs.yaml`` (system-wide fallback)
 
 Fields
 ------

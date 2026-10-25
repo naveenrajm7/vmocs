@@ -24,7 +24,8 @@ Global Options
 .. option:: --config PATH
 
    Path to ``vmocs.yaml``.  Defaults to ``confs/vmocs.yaml`` relative to the
-   working directory.
+   working directory, then ``/etc/vmocs/vmocs.yaml``. ``VMOCS_CONFIG`` can set
+   a deployment-wide default for manual CLI use.
 
 .. option:: --version
 

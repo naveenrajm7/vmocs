@@ -121,7 +121,10 @@ administrator:</p>
 </pre></div>
 </div>
 <p>The second command runs the vmocs CLI on a compute node, so it does not require
-vmocs to be installed on the login node.</p>
+vmocs to be installed on the login node. If the site configuration is not in
+<code class="docutils literal notranslate"><span class="pre">/etc/vmocs/vmocs.yaml</span></code>, export <code class="docutils literal notranslate"><span class="pre">VMOCS_CONFIG</span></code> with its path before manual
+CLI commands. The SPANK plugin's <code class="docutils literal notranslate"><span class="pre">vmocs_conf</span></code> setting is passed to wrapped VM
+tasks and cleanup commands, but it cannot alter an unrelated shell command.</p>
 <p>If <code class="docutils literal notranslate"><span class="pre">--vm-image</span></code> is not recognized, see
 <a class="reference internal" href="troubleshooting.html#troubleshoot-unrecognized-option"><span class="std std-ref">--vm-image is unrecognized</span></a> or contact the cluster administrator.</p>
 </section>
@@ -244,8 +247,11 @@ not open SSH automatically:</p>
 </pre></div>
 </div>
 <p>vmocs prints the SSH connection details and waits for QEMU.  The trailing
-Slurm command is not executed in this mode.  The job ends when the guest
-exits, the allocation reaches its time limit, or the job is cancelled.</p>
+Slurm command is not executed in this mode. Slurm still requires a command, so
+use a harmless placeholder such as <code class="docutils literal notranslate"><span class="pre">/bin/true</span></code>. The job ends when the guest
+exits, the allocation reaches its time limit, or the job is cancelled. A
+<code class="docutils literal notranslate"><span class="pre">--vm-save</span></code> request is published after any of those paths has stopped QEMU;
+a clean guest shutdown produces the strongest consistency marker.</p>
 </section>
 <section id="request-a-gpu">
 <h2>Request a GPU<a class="headerlink" href="#request-a-gpu" title="Link to this heading"></a></h2>

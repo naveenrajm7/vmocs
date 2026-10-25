@@ -17,7 +17,10 @@ administrator::
    srun -N1 -n1 vmocs template list
 
 The second command runs the vmocs CLI on a compute node, so it does not require
-vmocs to be installed on the login node.
+vmocs to be installed on the login node. If the site configuration is not in
+``/etc/vmocs/vmocs.yaml``, export ``VMOCS_CONFIG`` with its path before manual
+CLI commands. The SPANK plugin's ``vmocs_conf`` setting is passed to wrapped VM
+tasks and cleanup commands, but it cannot alter an unrelated shell command.
 
 If ``--vm-image`` is not recognized, see
 :ref:`troubleshoot-unrecognized-option` or contact the cluster administrator.
@@ -151,8 +154,11 @@ not open SSH automatically::
    srun -n1 --vm-image base-ubuntu --vm-attach=none /bin/true
 
 vmocs prints the SSH connection details and waits for QEMU.  The trailing
-Slurm command is not executed in this mode.  The job ends when the guest
-exits, the allocation reaches its time limit, or the job is cancelled.
+Slurm command is not executed in this mode. Slurm still requires a command, so
+use a harmless placeholder such as ``/bin/true``. The job ends when the guest
+exits, the allocation reaches its time limit, or the job is cancelled. A
+``--vm-save`` request is published after any of those paths has stopped QEMU;
+a clean guest shutdown produces the strongest consistency marker.
 
 Request a GPU
 -------------

@@ -112,3 +112,14 @@ def test_checkpoint_retry_is_idempotent_for_same_checkpoint_id(
     second = create_checkpoint(meta, str(destination))
 
     assert second == first
+
+
+def test_create_checkpoint_rejects_sensitive_guest_storage(tmp_path):
+    meta = _meta(tmp_path)
+    meta['checkpoint_blocked_reason'] = 'sensitive guest staging'
+    destination = tmp_path / 'checkpoint'
+
+    with pytest.raises(ImageError, match='checkpoint is disabled'):
+        create_checkpoint(meta, str(destination))
+
+    assert not destination.exists()

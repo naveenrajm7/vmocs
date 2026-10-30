@@ -1,3 +1,14 @@
+vmocs-slurm-plugin (0.1.6) unstable; urgency=medium
+
+  * Forward selected environment variables to Windows guests without placing
+    values on SSH or PowerShell command lines.
+  * Stage those values in a user-only directory, delete them before the child
+    starts, and refuse checkpoints for that session.
+  * Rotate the Windows bootstrap SSH key, confirm the reboot, and prove the
+    old key is rejected before staging secrets.
+
+ -- Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com>  Fri, 30 Oct 2026 12:41:34 -0600
+
 vmocs-slurm-plugin (0.1.5) unstable; urgency=medium
 
   * Preserve submitting-user ownership for checkpoints saved by root cleanup.

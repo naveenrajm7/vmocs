@@ -54,6 +54,11 @@ chmod +x %{_builddir}/find-requires
 %{_datadir}/vmocs/vmocs.conf
 
 %changelog
+* Fri Oct 30 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.6-1
+- Forward selected environment variables to Windows guests off the command line
+- Stage Windows values in a user-only directory and refuse later checkpoints
+- Rotate the bootstrap SSH key and prove it is rejected before staging secrets
+
 * Sun Oct 25 2026 Naveenraj Muthuraj <22456988+naveenrajm7@users.noreply.github.com> - 0.1.5-1
 - Preserve user ownership for checkpoints saved by root cleanup
 - Complete saves after clean TPM shutdown and tolerate teardown races

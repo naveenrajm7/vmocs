@@ -99,8 +99,13 @@ Fields
    Syntax used to construct attached guest commands. Use ``posix`` (the
    default) for Linux and other POSIX guests. Use ``windows`` for Windows
    OpenSSH guests so vmocs applies Windows argument quoting and does not emit
-   the POSIX ``exec`` keyword. Environment forwarding is currently available
-   only with ``posix``. Example::
+   the POSIX ``exec`` keyword. Both styles support ``vmocs run --forward-env``.
+   Windows forwarding requires Windows PowerShell 5.1 (``powershell.exe``), an
+   explicit executable such as ``powershell.exe`` or ``cmd.exe`` as the guest
+   command, ``boot-mode: vagrant``, and ``insert-key: true`` for an ephemeral
+   per-launch SSH key. vmocs captures and pins the first guest host key (trust
+   on first use), rotates the bootstrap key, and confirms a full reboot before
+   staging. Example::
 
       ssh-command-style: windows
 
@@ -219,7 +224,11 @@ Fields
 
    Boolean.  Default: ``true``.  Whether to inject the SSH key via cloud-init
    or Vagrant mechanism.  Set to ``false`` when using a pre-provisioned static
-   SSH key.
+   SSH key. Windows environment forwarding requires ``true`` and performs a
+   verified key rotation plus full guest reboot before staging. The Vagrant
+   bootstrap path assumes the compute host has no hostile local co-tenant;
+   stronger deployments must inject the per-launch key before ``sshd`` listens
+   or isolate the QEMU host forward.
 
 .. describe:: ssh-key
 

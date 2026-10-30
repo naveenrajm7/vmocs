@@ -64,10 +64,36 @@ Options
 
    Forward the named host environment variable to the guest command. Repeat
    for multiple variables. Only the name is placed in process arguments; the
-   value is sent over SSH standard input to a private temporary guest file,
-   which is deleted immediately before the command executes. Missing or
-   invalid names are errors. At most 16 variables and 64 KiB of serialized
-   data may be forwarded. Requires ``--attach auto`` and a guest command.
+   value is sent over a separate, non-interactive SSH connection to a private
+   temporary guest file, which is deleted immediately before the command
+   executes. POSIX guests use a ``0600`` file in a private ``/dev/shm``
+   directory. Windows guests use versioned JSON in a directory protected by a
+   non-inheriting ACL for the connected user. The command SSH connection keeps
+   its original standard input and terminal behavior.
+
+   Missing or invalid names are errors. Windows names that differ only by case
+   are also rejected. At most 16 variables and 64 KiB of serialized data may
+   be forwarded. Windows also rejects a final process environment block over
+   32,767 UTF-16 code units, including inherited variables. Requires
+   ``--attach auto`` and a guest command. Windows forwarding requires an
+   explicit executable and cannot be combined with ``--save`` because deletion
+   from the guest's persistent filesystem is not secure erasure.
+
+   Windows templates currently require ``boot-mode: vagrant`` and
+   ``insert-key: true``. vmocs overwrites the image's bootstrap credential,
+   requires a QMP-confirmed full guest reboot, then verifies that the ephemeral
+   per-launch key succeeds and the bootstrap key fails. If SSH loses the fixed
+   pre-reboot success marker, vmocs proves the ephemeral key and forces a fresh
+   QMP reset as the session-revocation boundary. It captures
+   and pins the first SSH host key presented through the already-running QEMU
+   forward (trust on first use) before any environment value is staged. Once
+   Windows forwarding is selected, vmocs refuses a later checkpoint request
+   for that VM.
+
+   The Vagrant handoff assumes a trusted compute host: the publicly known
+   bootstrap administrator key is reachable briefly before the confirmed
+   reboot. Protection against a hostile local co-tenant requires injecting the
+   per-launch key before ``sshd`` listens or isolating the QEMU host forward.
 
 Examples
 --------

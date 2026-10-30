@@ -206,8 +206,13 @@ Windows, BSD, or any image following the Vagrant convention.</p>
 <dd><p>Syntax used to construct attached guest commands. Use <code class="docutils literal notranslate"><span class="pre">posix</span></code> (the
 default) for Linux and other POSIX guests. Use <code class="docutils literal notranslate"><span class="pre">windows</span></code> for Windows
 OpenSSH guests so vmocs applies Windows argument quoting and does not emit
-the POSIX <code class="docutils literal notranslate"><span class="pre">exec</span></code> keyword. Environment forwarding is currently available
-only with <code class="docutils literal notranslate"><span class="pre">posix</span></code>. Example:</p>
+the POSIX <code class="docutils literal notranslate"><span class="pre">exec</span></code> keyword. Both styles support <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span> <span class="pre">--forward-env</span></code>.
+Windows forwarding requires Windows PowerShell 5.1 (<code class="docutils literal notranslate"><span class="pre">powershell.exe</span></code>), an
+explicit executable such as <code class="docutils literal notranslate"><span class="pre">powershell.exe</span></code> or <code class="docutils literal notranslate"><span class="pre">cmd.exe</span></code> as the guest
+command, <code class="docutils literal notranslate"><span class="pre">boot-mode:</span> <span class="pre">vagrant</span></code>, and <code class="docutils literal notranslate"><span class="pre">insert-key:</span> <span class="pre">true</span></code> for an ephemeral
+per-launch SSH key. vmocs captures and pins the first guest host key (trust
+on first use), rotates the bootstrap key, and confirms a full reboot before
+staging. Example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ssh</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">style</span><span class="p">:</span> <span class="n">windows</span>
 </pre></div>
 </div>
@@ -361,7 +366,11 @@ are intentionally rejected for these templates in the first implementation.</p>
 <span class="sig-name descname"><span class="pre">insert-key</span></span></dt>
 <dd><p>Boolean.  Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.  Whether to inject the SSH key via cloud-init
 or Vagrant mechanism.  Set to <code class="docutils literal notranslate"><span class="pre">false</span></code> when using a pre-provisioned static
-SSH key.</p>
+SSH key. Windows environment forwarding requires <code class="docutils literal notranslate"><span class="pre">true</span></code> and performs a
+verified key rotation plus full guest reboot before staging. The Vagrant
+bootstrap path assumes the compute host has no hostile local co-tenant;
+stronger deployments must inject the per-launch key before <code class="docutils literal notranslate"><span class="pre">sshd</span></code> listens
+or isolate the QEMU host forward.</p>
 </dd></dl>
 
 <dl class="describe">

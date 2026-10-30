@@ -165,11 +165,42 @@ an SSH transport failure.</p>
     <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">slurm</span><span class="o">-</span><span class="n">gha</span><span class="o">/</span><span class="n">bootstrap</span><span class="o">.</span><span class="n">sh</span>
 </pre></div>
 </div>
-<p>Only variable names are included in <code class="docutils literal notranslate"><span class="pre">srun</span></code> and SSH arguments. Values are
-read from the Slurm task environment by <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code>, transmitted over SSH
-standard input, stored briefly in a <code class="docutils literal notranslate"><span class="pre">0600</span></code> file under a private guest tmpfs
-directory, and deleted immediately before the guest command executes. The
-guest command should consume and unset one-time secrets promptly.</p>
+<p><code class="docutils literal notranslate"><span class="pre">srun</span></code> arguments contain only the selected variable names; values are absent
+from the command arguments passed to Slurm and SSH, but remain present in the
+Slurm task environment. <code class="docutils literal notranslate"><span class="pre">vmocs</span> <span class="pre">run</span></code> reads them there and transmits them over
+a separate, non-interactive SSH connection. POSIX guests briefly stage a
+<code class="docutils literal notranslate"><span class="pre">0600</span></code> file under a private guest tmpfs directory. Windows guests stage
+versioned JSON under the connected user's local application-data directory in
+a directory with a protected, user-only ACL. The payload is deleted before
+the guest command executes, so that command retains its original standard
+input and terminal behavior. The guest command should consume and unset
+one-time secrets promptly.</p>
+<p>Windows rejects a final child environment block over 32,767 UTF-16 code units,
+including inherited variables, before the staged payload is removed and the
+child is started.</p>
+<p>For a Windows bootstrap, invoke an explicit executable and forward the guest
+CA pathname like any other value:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">SLURM_GHA_CA_FILE</span><span class="o">=</span><span class="s1">&#39;C:\slurm-gha\callback-ca.cer&#39;</span>
+<span class="n">srun</span> <span class="o">-</span><span class="n">n1</span> <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">image</span> <span class="n">windows</span><span class="o">-</span><span class="n">runner</span> \
+    <span class="o">--</span><span class="n">vm</span><span class="o">-</span><span class="n">forward</span><span class="o">-</span><span class="n">env</span><span class="o">=</span><span class="n">SLURM_GHA_CA_FILE</span> \
+    <span class="n">powershell</span><span class="o">.</span><span class="n">exe</span> <span class="o">-</span><span class="n">NoLogo</span> <span class="o">-</span><span class="n">NoProfile</span> <span class="o">-</span><span class="n">File</span> <span class="s1">&#39;C:\slurm-gha</span><span class="se">\b</span><span class="s1">ootstrap.ps1&#39;</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">SLURM_GHA_CA_FILE</span></code> contains only the pathname. The public CA certificate
+must already be installed in the Windows image at that location; vmocs does
+not copy the certificate, and a TLS private key must never be installed in the
+guest. The Windows template must set <code class="docutils literal notranslate"><span class="pre">insert-key:</span> <span class="pre">true</span></code> so vmocs replaces
+the image's bootstrap key with an ephemeral key. It requires a QMP-confirmed
+full guest reboot, proves that the new key succeeds and the bootstrap key
+fails, and pins the first guest SSH host key (trust on first use) before
+staging credentials. If SSH loses the fixed pre-reboot success marker, vmocs
+first proves the ephemeral key, then forces and observes a fresh QMP reset as
+the session-revocation boundary. The template must also use
+<code class="docutils literal notranslate"><span class="pre">boot-mode:</span> <span class="pre">vagrant</span></code>.
+Windows environment forwarding cannot be combined with <code class="docutils literal notranslate"><span class="pre">--vm-save</span></code>, and a
+later save request for the same VM is also refused. This Vagrant handoff
+assumes a trusted compute host; a hostile-local-co-tenant threat model requires
+pre-<code class="docutils literal notranslate"><span class="pre">sshd</span></code> per-launch key injection or isolation of the QEMU host forward.</p>
 </section>
 <section id="request-resources">
 <h2>Request resources<a class="headerlink" href="#request-resources" title="Link to this heading"></a></h2>

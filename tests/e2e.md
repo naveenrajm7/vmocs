@@ -15,6 +15,40 @@ Images used in these tests:
 
 Both templates are defined in `confs/templates.yaml`.
 
+## Windows environment forwarding (direct vmocs; no Slurm)
+
+Use a Windows Vagrant-style template with `ssh-command-style: windows` and
+`insert-key: true`. The latter rotates the image bootstrap key to an ephemeral
+per-launch key, requires a QMP-confirmed full reboot, proves that the old key
+is rejected, and then permits credential staging. If SSH loses the pre-reboot
+success marker, vmocs first proves the ephemeral key and forces a fresh QMP
+reset before handoff verification.
+vmocs also captures and pins the first guest SSH host key before staging. Then
+run:
+
+```bash
+VMOCS_WINDOWS_TEMPLATE=windows-runner \
+VMOCS_TEST_JOB_ID=99003001 \
+bash tests/run-windows-forward-env-e2e.sh
+```
+
+The test launches vmocs directly. It checks all six Slurm GHA variables,
+hostile and Unicode values, an empty value, difficult child arguments,
+grandchild inheritance, preserved child stdin, deletion before child launch,
+absence of the token from process command lines, and exact exit status 37.
+Its CA variable is only the guest path; the public certificate itself must be
+baked into the Windows image.
+
+To exercise the attached TTY path as well, allocate a local pseudo-terminal
+and feed the same child input through it:
+
+```bash
+printf 'child stdin remains available\n' | \
+script -qefc 'VMOCS_TEST_TTY=1 VMOCS_WINDOWS_TEMPLATE=windows-runner \
+VMOCS_TEST_JOB_ID=99003002 bash tests/run-windows-forward-env-e2e.sh' \
+/dev/null
+```
+
 ---
 
 ## 1. Inspect a template

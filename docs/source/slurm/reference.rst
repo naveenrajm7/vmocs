@@ -37,8 +37,16 @@ The plugin registers these options with Slurm clients and remote job steps:
 
    Forward the named Slurm task environment variable to the attached guest
    command. Repeat for multiple variables. The plugin passes only each name to
-   ``vmocs run``; values remain out of Slurm and SSH command arguments. At
-   most 16 variables may be selected.
+   ``vmocs run``; values remain out of the command arguments passed to Slurm and
+   SSH, though they are necessarily present in the Slurm task environment. At
+   most 16 variables and 64 KiB of serialized data may be selected. POSIX and
+   Windows ``ssh-command-style`` templates are supported. Windows forwarding
+   requires an explicit executable, rejects names that differ only by case and
+   a final process environment block over 32,767 UTF-16 code units (including
+   inherited variables), requires template ``boot-mode: vagrant`` and
+   ``insert-key: true``, performs a verified key-rotation reboot before staging,
+   and cannot be combined with ``--vm-save`` or a later checkpoint of the same
+   VM.
 
 All current modes require a job step with exactly one task.  The plugin
 returns an error when Slurm reports a larger task count.

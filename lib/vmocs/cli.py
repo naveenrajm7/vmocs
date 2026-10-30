@@ -25,7 +25,11 @@ from .launch import (
 from .checkpoint import create_checkpoint
 from .monitor import QemuMonitor
 from .snapshot import create_snapshot
-from .session import resolve_forwarded_env, run_attached_session
+from .session import (
+    WINDOWS_FORWARDING_CHECKPOINT_REASON,
+    resolve_forwarded_env,
+    run_attached_session,
+)
 
 
 def _load(config_path=None):
@@ -242,22 +246,42 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
     if command and command[0] == '--':
         command = command[1:]
 
+    tpl = tpls[template_name]
+
     if forward_env_names and attach != 'auto':
         raise VmocsError('--forward-env requires --attach=auto')
     if forward_env_names and not command:
         raise VmocsError('--forward-env requires a guest command')
+    if (forward_env_names and save_path
+            and tpl.ssh_command_style == 'windows'):
+        raise VmocsError(
+            '--forward-env cannot be combined with --save for Windows guests')
+    if (forward_env_names and tpl.ssh_command_style == 'windows'
+            and not tpl.insert_key):
+        raise VmocsError(
+            'Windows --forward-env requires template insert-key: true')
+    if (forward_env_names and tpl.ssh_command_style == 'windows'
+            and tpl.boot_mode != 'vagrant'):
+        raise VmocsError(
+            'Windows --forward-env currently requires boot-mode: vagrant')
     try:
-        forwarded_env = resolve_forwarded_env(forward_env_names)
+        forwarded_env = resolve_forwarded_env(
+            forward_env_names, command_style=tpl.ssh_command_style)
     except ValueError as exc:
         raise VmocsError(str(exc)) from exc
 
-    tpl = tpls[template_name]
     click.echo(f'Launching VM from template {template_name!r} '
                f'({cores} cores, {memory} MB)...')
     meta = launch_vm(
         cfg, tpl, cores, memory, job_id, pci_devices=pci_devices,
         supervised=(attach == 'auto'), save_path=save_path,
-        resume_path=resume_path)
+        resume_path=resume_path,
+        checkpoint_blocked_reason=(
+            WINDOWS_FORWARDING_CHECKPOINT_REASON
+            if forwarded_env and tpl.ssh_command_style == 'windows'
+            else None),
+        pin_ssh_host_key=bool(
+            forwarded_env and tpl.ssh_command_style == 'windows'))
     click.echo(f'VM ready  job_id={meta["job_id"]}  '
                f'ssh -i {meta["key_path"]} -p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')

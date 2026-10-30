@@ -3,8 +3,10 @@
 
 """SSH-backed guest task sessions."""
 
-import os
+import base64
+import json
 import logging
+import os
 import queue
 import re
 import secrets
@@ -18,6 +20,7 @@ import time
 from .checkpoint import create_checkpoint
 from .error import VmocsError
 from .launch import (
+    _ssh_identity_options,
     _kill_qemu,
     _write_metadata,
     is_vm_stopping,
@@ -30,17 +33,40 @@ from .monitor import QemuMonitor
 _ENV_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _MAX_FORWARDED_ENV = 16
 _MAX_FORWARDED_ENV_BYTES = 64 * 1024
+_MAX_WINDOWS_LAUNCH_RECORD_BYTES = 128 * 1024
+_WINDOWS_ENV_VERSION = 1
+_WINDOWS_STAGE_ID_RE = re.compile(r'^[0-9a-f]{32}$')
+WINDOWS_FORWARDING_CHECKPOINT_REASON = (
+    'Windows environment forwarding staged sensitive data on the guest disk')
 
 
-def resolve_forwarded_env(names, environ=None):
+class _WindowsStageCleanupPending(VmocsError):
+    """A failed Windows stage whose exact cleanup still needs retrying."""
+
+    def __init__(self, message, stage_id):
+        super().__init__(message)
+        self.stage_id = stage_id
+
+
+def _utf16_code_units(value):
+    """Return the number of UTF-16 code units Windows uses for VALUE."""
+    return len(value.encode('utf-16le')) // 2
+
+
+def resolve_forwarded_env(names, environ=None, command_style='posix'):
     """Resolve explicitly selected environment names without accepting values."""
     environ = os.environ if environ is None else environ
     resolved = []
-    seen = set()
+    seen = {}
     for name in names:
         if not _ENV_NAME_RE.fullmatch(name):
             raise ValueError(f'invalid environment variable name: {name!r}')
-        if name in seen:
+        identity = name.upper() if command_style == 'windows' else name
+        if identity in seen:
+            if command_style == 'windows' and seen[identity] != name:
+                raise ValueError(
+                    'Windows environment variable names differ only by case: '
+                    f'{seen[identity]!r} and {name!r}')
             continue
         if len(resolved) >= _MAX_FORWARDED_ENV:
             raise ValueError(
@@ -48,10 +74,20 @@ def resolve_forwarded_env(names, environ=None):
         if name not in environ:
             raise ValueError(
                 f'requested environment variable is not set: {name}')
-        seen.add(name)
-        resolved.append((name, environ[name]))
+        value = environ[name]
+        if (command_style == 'windows'
+                and ('\0' in value
+                     or (_utf16_code_units(name) + 1
+                         + _utf16_code_units(value)) > 32767)):
+            raise ValueError(
+                f'Windows environment variable is too large: {name!r}')
+        seen[identity] = name
+        resolved.append((name, value))
 
-    payload = _serialize_forwarded_env(resolved)
+    if command_style == 'windows':
+        payload = _serialize_windows_forwarded_env(resolved)
+    else:
+        payload = _serialize_forwarded_env(resolved)
     if len(payload) > _MAX_FORWARDED_ENV_BYTES:
         raise ValueError(
             f'forwarded environment exceeds {_MAX_FORWARDED_ENV_BYTES} bytes')
@@ -66,18 +102,226 @@ def _serialize_forwarded_env(environment):
     return ''.join(lines).encode()
 
 
+def _serialize_windows_forwarded_env(environment):
+    """Encode Windows environment assignments as versioned UTF-8 JSON data."""
+    record = {
+        'version': _WINDOWS_ENV_VERSION,
+        'environment': [
+            {'name': name, 'value': value} for name, value in environment
+        ],
+    }
+    return json.dumps(
+        record, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+
+def _serialize_windows_launch_record(environment, command):
+    """Encode environment and Windows child-process metadata for staging."""
+    if not command or not command[0]:
+        raise VmocsError('Windows environment forwarding requires an executable')
+    if any('\0' in argument for argument in command):
+        raise VmocsError('Windows guest command contains a NUL character')
+    windows_command_line = subprocess.list2cmdline(command)
+    if len(windows_command_line.encode('utf-16le')) // 2 > 32767:
+        raise VmocsError('Windows guest command line is too large')
+    record = {
+        'version': _WINDOWS_ENV_VERSION,
+        'environment': [
+            {'name': name, 'value': value} for name, value in environment
+        ],
+        'command': {
+            'fileName': command[0],
+            'arguments': subprocess.list2cmdline(command[1:]),
+        },
+    }
+    payload = json.dumps(
+        record, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    if len(payload) > _MAX_WINDOWS_LAUNCH_RECORD_BYTES:
+        raise VmocsError('Windows environment launch record is too large')
+    return payload
+
+
+def _encode_powershell(script):
+    """Encode a Windows PowerShell 5.1 command without embedding shell data."""
+    return base64.b64encode(script.encode('utf-16le')).decode('ascii')
+
+
+def _validate_windows_stage_id(stage_id):
+    if not _WINDOWS_STAGE_ID_RE.fullmatch(stage_id):
+        raise VmocsError('invalid Windows environment staging identifier')
+
+
+def _windows_stage_script(stage_id):
+    """Return the secret-free PowerShell staging command."""
+    _validate_windows_stage_id(stage_id)
+    return r"""
+$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+$root=[IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'),'VMoCS')
+$dir=[IO.Path]::Combine($root,'vmocs-env-{stage_id}')
+$partial=[IO.Path]::Combine($dir,'environment.partial')
+$payload=[IO.Path]::Combine($dir,'environment.json')
+$stream=$null
+$source=$null
+$safeDir=$false
+try{
+[IO.Directory]::CreateDirectory($root)|Out-Null
+if([IO.Directory]::Exists($dir)){throw 'collision'}
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+$acl=New-Object Security.AccessControl.DirectorySecurity
+$acl.SetAccessRuleProtection($true,$false)
+$inherit=[Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+$rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,[Security.AccessControl.FileSystemRights]::FullControl,$inherit,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
+$acl.AddAccessRule($rule)
+[IO.Directory]::CreateDirectory($dir,$acl)|Out-Null
+if(([IO.File]::GetAttributes($dir) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'reparse'}
+$actual=[IO.Directory]::GetAccessControl($dir)
+$rules=@($actual.GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier]))
+if(-not $actual.AreAccessRulesProtected -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or ($rules[0].FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne [Security.AccessControl.FileSystemRights]::FullControl){throw 'acl'}
+$safeDir=$true
+$source=[Console]::OpenStandardInput()
+$stream=New-Object IO.FileStream($partial,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+$buffer=New-Object byte[] 8192
+$total=0
+while(($count=$source.Read($buffer,0,$buffer.Length)) -gt 0){
+$total+=$count
+if($total -gt 131072){throw 'oversize'}
+$stream.Write($buffer,0,$count)
+}
+$stream.Flush($true)
+$stream.Dispose();$stream=$null
+$source.Dispose();$source=$null
+[IO.File]::Move($partial,$payload)
+exit 0
+}catch{
+try{if($stream){$stream.Dispose()}}catch{}
+try{if($source){$source.Dispose()}}catch{}
+if($safeDir){
+try{[IO.File]::Delete($partial)}catch{}
+try{[IO.File]::Delete($payload)}catch{}
+try{[IO.Directory]::Delete($dir,$false)}catch{}
+}
+[Console]::Error.WriteLine('VMoCS environment staging failed.')
+exit 86
+}
+""".strip().replace('{stage_id}', stage_id)
+
+
+def _windows_launch_script(stage_id):
+    """Return the secret-free PowerShell child launcher."""
+    _validate_windows_stage_id(stage_id)
+    return r"""
+$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+$root=[IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'),'VMoCS')
+$dir=[IO.Path]::Combine($root,'vmocs-env-{stage_id}')
+$payload=[IO.Path]::Combine($dir,'environment.json')
+$stream=$null
+$safeDir=$false
+try{
+if(([IO.File]::GetAttributes($dir) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'reparse'}
+$safeDir=$true
+$stream=[IO.File]::Open($payload,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+if($stream.Length -gt 131072){throw 'oversize'}
+$bytes=New-Object byte[] ([int]$stream.Length)
+$offset=0
+while($offset -lt $bytes.Length){
+$count=$stream.Read($bytes,$offset,$bytes.Length-$offset)
+if($count -eq 0){throw 'truncated'}
+$offset+=$count
+}
+$stream.Dispose();$stream=$null
+$utf8=New-Object Text.UTF8Encoding($false,$true)
+$record=ConvertFrom-Json -InputObject $utf8.GetString($bytes)
+if(($record.version -isnot [int]) -or $record.version -ne 1){throw 'version'}
+$items=@($record.environment)
+if($items.Count -gt 16){throw 'count'}
+if($null -eq $record.command -or $record.command.fileName -isnot [string] -or [string]::IsNullOrEmpty($record.command.fileName) -or $record.command.arguments -isnot [string]){throw 'command'}
+$seen=New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$psi=New-Object Diagnostics.ProcessStartInfo
+$psi.FileName=$record.command.fileName
+$psi.Arguments=$record.command.arguments
+$psi.UseShellExecute=$false
+$psi.RedirectStandardInput=$false
+$psi.RedirectStandardOutput=$false
+$psi.RedirectStandardError=$false
+foreach($item in $items){
+if($null -eq $item -or $item.name -isnot [string] -or $item.value -isnot [string]){throw 'type'}
+$name=$item.name;$value=$item.value
+if($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$' -or -not $seen.Add($name)){throw 'name'}
+if($value.IndexOf([char]0) -ge 0 -or ($name.Length+1+$value.Length) -gt 32767){throw 'value'}
+$psi.EnvironmentVariables[$name]=$value
+}
+$environmentChars=1
+foreach($entry in $psi.EnvironmentVariables.GetEnumerator()){
+$environmentChars+=([string]$entry.Key).Length+1+([string]$entry.Value).Length+1
+}
+if($environmentChars -gt 32767){throw 'environment'}
+[IO.File]::Delete($payload)
+[IO.Directory]::Delete($dir,$false)
+$safeDir=$false
+$record=$null;$items=$null;$bytes=$null
+$process=[Diagnostics.Process]::Start($psi)
+if($null -eq $process){throw 'start'}
+$psi=$null
+$process.WaitForExit()
+exit $process.ExitCode
+}catch{
+try{if($stream){$stream.Dispose()}}catch{}
+if($safeDir){
+try{[IO.File]::Delete($payload)}catch{}
+try{[IO.Directory]::Delete($dir,$false)}catch{}
+}
+[Console]::Error.WriteLine('VMoCS environment launch failed.')
+exit 87
+}
+""".strip().replace('{stage_id}', stage_id)
+
+
+def _windows_cleanup_script(stage_id):
+    """Return a best-effort, exact-path cleanup command."""
+    _validate_windows_stage_id(stage_id)
+    return r"""
+$ProgressPreference='SilentlyContinue'
+$root=[IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'),'VMoCS')
+$dir=[IO.Path]::Combine($root,'vmocs-env-{stage_id}')
+try{
+if(-not [IO.Directory]::Exists($dir)){exit 0}
+if(([IO.File]::GetAttributes($dir) -band [IO.FileAttributes]::ReparsePoint) -ne 0){exit 1}
+[IO.File]::Delete([IO.Path]::Combine($dir,'environment.partial'))
+[IO.File]::Delete([IO.Path]::Combine($dir,'environment.json'))
+[IO.Directory]::Delete($dir,$false)
+if([IO.Directory]::Exists($dir)){exit 1}
+exit 0
+}catch{exit 1}
+""".strip().replace('{stage_id}', stage_id)
+
+
+def _windows_powershell_command(script):
+    """Build a cmd.exe-safe invocation of fixed PowerShell code."""
+    return subprocess.list2cmdline((
+        'powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
+        '-EncodedCommand', _encode_powershell(script)))
+
+
 def _ssh_base_command(meta, tty=False):
     """Build the common SSH argv without a remote command."""
+    known_hosts_path = meta.get('known_hosts_path')
     argv = [
         'ssh',
         '-o', 'BatchMode=yes',
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
+        '-o', ('StrictHostKeyChecking=yes'
+               if known_hosts_path else 'StrictHostKeyChecking=no'),
+        '-o', (f'UserKnownHostsFile={known_hosts_path}'
+               if known_hosts_path else 'UserKnownHostsFile=/dev/null'),
         '-o', 'ServerAliveInterval=15',
         '-o', 'ServerAliveCountMax=3',
     ]
     if meta.get('key_path'):
-        argv += ['-i', meta['key_path']]
+        isolated_identity = bool(
+            meta.get('ssh_command_style') == 'windows'
+            and meta.get('secure_ssh_handoff_verified'))
+        argv += _ssh_identity_options(
+            meta['key_path'], isolated=isolated_identity)
     argv += ['-tt' if tty else '-T']
     argv += [
         '-p', str(meta['ssh_port']),
@@ -93,18 +337,19 @@ def build_ssh_command(meta, command=(), tty=False, env_file=None):
         command_style = meta.get('ssh_command_style', 'posix')
         if command_style == 'windows':
             if env_file:
-                raise VmocsError(
-                    'environment forwarding is not supported for Windows guests')
-            # Windows OpenSSH passes the command string to cmd.exe.  It has no
-            # POSIX `exec` builtin, and its argv quoting follows the Microsoft
-            # command-line rules implemented by list2cmdline().
-            remote_command = subprocess.list2cmdline(command)
+                remote_command = _windows_powershell_command(
+                    _windows_launch_script(env_file))
+            else:
+                # Windows OpenSSH passes the command string to cmd.exe.  It has
+                # no POSIX `exec` builtin, and its argv quoting follows the
+                # Microsoft command-line rules implemented by list2cmdline().
+                remote_command = subprocess.list2cmdline(command)
         else:
             # ssh sends a command string to the login shell. shlex.join
             # preserves the original POSIX argv across that required shell
             # boundary, and exec keeps signals attached to the guest process.
             remote_command = 'exec ' + shlex.join(command)
-        if env_file:
+        if env_file and command_style != 'windows':
             remote_command = (
                 f'env_file={shlex.quote(env_file)}; '
                 'env_dir=${env_file%/*}; '
@@ -117,7 +362,7 @@ def build_ssh_command(meta, command=(), tty=False, env_file=None):
     return argv
 
 
-def _stage_forwarded_env(meta, environment):
+def _stage_posix_forwarded_env(meta, environment):
     """Send selected values over SSH stdin into a private guest tmpfs file."""
     token = secrets.token_hex(16)
     env_dir = f'/dev/shm/vmocs-env-{token}'
@@ -143,6 +388,65 @@ def _stage_forwarded_env(meta, environment):
     if result.returncode != 0:
         raise VmocsError('failed to stage forwarded environment in guest')
     return env_file
+
+
+def _stage_windows_forwarded_env(meta, environment, command):
+    """Stage a Windows launch record without placing values in process argv."""
+    if not meta.get('ephemeral_ssh_key') or not meta.get('key_path'):
+        raise VmocsError(
+            'Windows environment forwarding requires insert-key: true')
+    if not meta.get('ssh_host_key_pinned') or not meta.get('known_hosts_path'):
+        raise VmocsError(
+            'Windows environment forwarding requires a pinned SSH host key')
+    if not meta.get('secure_ssh_handoff_verified'):
+        raise VmocsError(
+            'Windows environment forwarding requires a verified SSH handoff')
+    stage_id = secrets.token_hex(16)
+    payload = _serialize_windows_launch_record(environment, command)
+    remote_command = _windows_powershell_command(
+        _windows_stage_script(stage_id))
+    try:
+        result = subprocess.run(
+            _ssh_base_command(meta) + [remote_command],
+            input=payload,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False)
+    except OSError as exc:
+        message = 'failed to start SSH for environment forwarding'
+        if not _cleanup_windows_forwarded_env(meta, stage_id):
+            raise _WindowsStageCleanupPending(message, stage_id) from exc
+        raise VmocsError(message) from exc
+    if result.returncode != 0:
+        message = 'failed to stage forwarded environment in guest'
+        if not _cleanup_windows_forwarded_env(meta, stage_id):
+            raise _WindowsStageCleanupPending(message, stage_id)
+        raise VmocsError(message)
+    return stage_id
+
+
+def _stage_forwarded_env(meta, environment, command=()):
+    """Stage selected values using the guest command style."""
+    if meta.get('ssh_command_style', 'posix') == 'windows':
+        return _stage_windows_forwarded_env(meta, environment, command)
+    return _stage_posix_forwarded_env(meta, environment)
+
+
+def _cleanup_windows_forwarded_env(meta, stage_id):
+    """Best-effort cleanup if the command SSH session never consumed a stage."""
+    remote_command = _windows_powershell_command(
+        _windows_cleanup_script(stage_id))
+    try:
+        result = subprocess.run(
+            _ssh_base_command(meta) + [remote_command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def _process_alive(pid):
@@ -249,6 +553,27 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
     Interactive sessions reconnect after a QMP RESET or an SSH transport loss
     while QEMU remains alive. Non-interactive commands are never replayed.
     """
+    windows_forwarding = bool(
+        forwarded_env and meta.get('ssh_command_style') == 'windows')
+    if windows_forwarding:
+        if not meta.get('ephemeral_ssh_key') or not meta.get('key_path'):
+            raise VmocsError(
+                'Windows environment forwarding requires insert-key: true')
+        if (not meta.get('ssh_host_key_pinned')
+                or not meta.get('known_hosts_path')):
+            raise VmocsError(
+                'Windows environment forwarding requires a pinned SSH host key')
+        if not meta.get('secure_ssh_handoff_verified'):
+            raise VmocsError(
+                'Windows environment forwarding requires a verified SSH handoff')
+        if save_path or meta.get('save_path'):
+            raise VmocsError(
+                'Windows environment forwarding cannot be combined with saving')
+        if not meta.get('checkpoint_blocked_reason'):
+            meta['checkpoint_blocked_reason'] = (
+                WINDOWS_FORWARDING_CHECKPOINT_REASON)
+            _write_metadata(meta['runtime_dir'], meta)
+
     qemu_pid = meta['pid']
     tty = os.isatty(0)
     watcher = _LifecycleWatcher(meta['qmp_socket'])
@@ -257,6 +582,7 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
     stop_event = threading.Event()
     termination_signal = [None]
     old_handlers = {}
+    pending_windows_stages = set()
 
     def _on_signal(signum, _frame):
         termination_signal[0] = termination_signal[0] or signum
@@ -271,10 +597,22 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
         while True:
             env_file = None
             if forwarded_env:
-                env_file = _stage_forwarded_env(meta, forwarded_env)
-            status = _run_ssh(
-                meta, command, tty, watcher,
-                stop_requested=stop_event.is_set, env_file=env_file)
+                try:
+                    env_file = _stage_forwarded_env(
+                        meta, forwarded_env, command=command)
+                except _WindowsStageCleanupPending as exc:
+                    pending_windows_stages.add(exc.stage_id)
+                    raise
+                if windows_forwarding:
+                    pending_windows_stages.add(env_file)
+            try:
+                status = _run_ssh(
+                    meta, command, tty, watcher,
+                    stop_requested=stop_event.is_set, env_file=env_file)
+            finally:
+                if (windows_forwarding and env_file
+                        and _cleanup_windows_forwarded_env(meta, env_file)):
+                    pending_windows_stages.discard(env_file)
             # QMP events and the SSH child's exit can race slightly.
             time.sleep(0.1)
             watcher.drain()
@@ -295,10 +633,17 @@ def run_attached_session(meta, command=(), reconnect_timeout=180,
                 if wait_for_ssh(
                         '127.0.0.1', meta['ssh_port'], meta.get('key_path'),
                         reconnect_timeout, meta['ssh_user'],
-                        stop_requested=stop_event.is_set):
+                        stop_requested=stop_event.is_set,
+                        known_hosts_path=meta.get('known_hosts_path')):
+                    for stage_id in tuple(pending_windows_stages):
+                        if _cleanup_windows_forwarded_env(meta, stage_id):
+                            pending_windows_stages.discard(stage_id)
                     continue
             return status
     finally:
+        for stage_id in tuple(pending_windows_stages):
+            if _cleanup_windows_forwarded_env(meta, stage_id):
+                pending_windows_stages.discard(stage_id)
         meta['state'] = 'stopping'
         _write_metadata(meta['runtime_dir'], meta)
         watcher.drain()

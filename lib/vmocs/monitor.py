@@ -71,6 +71,9 @@ class QemuMonitor:
     def powerdown(self):
         self._validate('{"execute": "system_powerdown"}\n\n')
 
+    def reset(self):
+        self._validate('{"execute": "system_reset"}\n\n')
+
     def query_status(self):
         """Return the VM status string (e.g. 'running', 'paused')."""
         data = self._exec_sync('{"execute": "query-status"}\n\n')

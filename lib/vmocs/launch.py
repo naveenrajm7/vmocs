@@ -5,6 +5,7 @@
 #  QEMU is fork/exec'd so it inherits the caller's cgroup automatically
 #  (same principle as pcocc Hypervisor.py:1664-1674).
 
+import base64
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import re
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 
@@ -34,6 +36,12 @@ from .sidecars import (
     read_boot_id,
     stop_persisted_sidecars,
 )
+
+
+_SSH_AUTHENTICATED = 'authenticated'
+_SSH_REJECTED = 'rejected'
+_SSH_INDETERMINATE = 'indeterminate'
+_SYSTEM_SSH_CONFIG = '/etc/ssh/ssh_config'
 
 
 def _current_host_user():
@@ -109,12 +117,398 @@ def generate_ssh_keypair(runtime_dir):
     return key_path, pubkey
 
 
-def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
-    """Upload ephemeral pubkey via scp, revoking the well-known Vagrant insecure key.
+def _is_per_launch_ssh_key(insert_key, using_snapshot, boot_mode):
+    """Return whether this launch creates and installs a fresh SSH key."""
+    return bool(
+        insert_key
+        and not (using_snapshot and boot_mode == 'cloud-init'))
 
-    Uses scp (no remote shell command) so it works on Linux and Windows guests.
-    Polls until scp succeeds or timeout expires.
+
+def _requires_authenticated_ssh_readiness(host_user, secure_windows_handoff):
+    """Keep legacy banner readiness except for identity-bound launches."""
+    return host_user is not None or secure_windows_handoff
+
+
+def _ssh_host_key_options(known_hosts_path=None):
+    """Return strict pinned-host options, or legacy permissive options."""
+    if known_hosts_path:
+        return [
+            '-o', 'StrictHostKeyChecking=yes',
+            '-o', f'UserKnownHostsFile={known_hosts_path}',
+        ]
+    return [
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'UserKnownHostsFile=/dev/null',
+    ]
+
+
+def _ssh_identity_options(key_path, isolated=False):
+    """Return legacy identity selection or the isolated Windows handoff set."""
+    if not isolated:
+        return ['-i', key_path]
+    return [
+        # Read the trusted system configuration (including site crypto policy)
+        # while skipping user-controlled ~/.ssh/config.
+        '-F', _SYSTEM_SSH_CONFIG,
+        '-i', key_path,
+        '-o', 'IdentitiesOnly=yes',
+        '-o', 'IdentityAgent=none',
+        '-o', 'CertificateFile=none',
+        '-o', 'PreferredAuthentications=publickey',
+        '-o', 'PasswordAuthentication=no',
+        '-o', 'KbdInteractiveAuthentication=no',
+        '-o', 'GSSAPIAuthentication=no',
+        '-o', 'ControlMaster=no',
+        '-o', 'ControlPath=none',
+    ]
+
+
+def _ssh_key_authentication_result(
+        host, port, key_path, ssh_user='root', known_hosts_path=None,
+        timeout=10, isolated_identity=False):
+    """Classify a key login without treating transport errors as rejection."""
+    command = [
+        'ssh', '-vvv',
+        *_ssh_identity_options(key_path, isolated=isolated_identity),
+        *_ssh_host_key_options(known_hosts_path),
+        '-o', 'BatchMode=yes',
+        '-o', 'ConnectTimeout=2',
+        '-T', '-p', str(port), f'{ssh_user}@{host}', 'exit 0',
+    ]
+    environment = os.environ.copy()
+    environment['LC_ALL'] = 'C'
+    environment['LANG'] = 'C'
+    try:
+        result = subprocess.run(
+            command, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            check=False, timeout=timeout, env=environment)
+    except (OSError, subprocess.TimeoutExpired):
+        return _SSH_INDETERMINATE
+
+    if result.returncode == 0:
+        return _SSH_AUTHENTICATED
+
+    stderr = result.stderr or b''
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode('utf-8', errors='replace')
+    diagnostics = stderr.splitlines()
+    terminal_diagnostic = diagnostics[-1].strip() if diagnostics else ''
+    denied = re.fullmatch(
+        rf'{re.escape(ssh_user)}@{re.escape(host)}: '
+        r'Permission denied \([A-Za-z0-9@._,+-]+\)\.',
+        terminal_diagnostic)
+    if result.returncode == 255 and denied:
+        # A terminal Permission denied diagnostic is not enough: OpenSSH can
+        # skip an unusable or locally disallowed private key and emit the same
+        # message.  Only classify rejection when DEBUG3 proves that this exact
+        # key was offered and the server answered USERAUTH_FAILURE (type 51).
+        offer_prefix = f'debug1: Offering public key: {key_path} '
+        for index, diagnostic in enumerate(diagnostics):
+            if not (diagnostic.startswith(offer_prefix)
+                    and diagnostic.endswith(' explicit')):
+                continue
+            sent_offer = False
+            for response in diagnostics[index + 1:]:
+                if response.startswith('debug1: Offering public key: '):
+                    break
+                if response == 'debug3: send packet: type 50':
+                    sent_offer = True
+                elif (sent_offer
+                      and response == 'debug3: receive packet: type 51'):
+                    return _SSH_REJECTED
+    return _SSH_INDETERMINATE
+
+
+def _ssh_key_authenticates(host, port, key_path, ssh_user='root',
+                           known_hosts_path=None, timeout=10,
+                           isolated_identity=False):
+    """Return whether KEY_PATH authenticates; indeterminate failures are false."""
+    return _ssh_key_authentication_result(
+        host, port, key_path, ssh_user,
+        known_hosts_path=known_hosts_path, timeout=timeout,
+        isolated_identity=isolated_identity) == _SSH_AUTHENTICATED
+
+
+def _verify_windows_ssh_handoff(host, port, ephemeral_key_path,
+                                ssh_user, known_hosts_path):
+    """Prove new-key success, bootstrap-key failure, then new-key success."""
+    def probe(key_path):
+        return _ssh_key_authentication_result(
+            host, port, key_path, ssh_user,
+            known_hosts_path=known_hosts_path, isolated_identity=True)
+
+    if probe(ephemeral_key_path) != _SSH_AUTHENTICATED:
+        raise HypervisorError(
+            'Windows ephemeral SSH key could not be verified after reboot')
+    bootstrap_result = probe(VAGRANT_KEY)
+    if bootstrap_result == _SSH_AUTHENTICATED:
+        raise HypervisorError(
+            'Windows bootstrap SSH key is still accepted after rotation')
+    if bootstrap_result != _SSH_REJECTED:
+        raise HypervisorError(
+            'Windows bootstrap SSH key revocation could not be proven')
+    if probe(ephemeral_key_path) != _SSH_AUTHENTICATED:
+        raise HypervisorError(
+            'Windows ephemeral SSH key could not be reconfirmed '
+            'after bootstrap-key revocation')
+
+
+def _is_guest_reboot_qmp_event(event):
+    """Match QMP's two documented representations of a guest reboot."""
+    if not isinstance(event, dict):
+        return False
+    if event.get('event') not in ('RESET', 'SHUTDOWN'):
+        return False
+    data = event.get('data')
+    return isinstance(data, dict) and data.get('reason') == 'guest-reset'
+
+
+def _is_host_reset_qmp_event(event):
+    """Match the RESET emitted for a host QMP system_reset command."""
+    if not isinstance(event, dict) or event.get('event') != 'RESET':
+        return False
+    data = event.get('data')
+    return (isinstance(data, dict)
+            and data.get('reason') == 'host-qmp-system-reset')
+
+
+def _capture_ssh_host_keys(host, port, runtime_dir, timeout):
+    """Capture the first SSH host keys from the running QEMU forward (TOFU)."""
+    known_hosts_path = os.path.join(runtime_dir, 'ssh_known_hosts')
+    expected_prefix = f'[{host}]:{port} '
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            result = subprocess.run(
+                ['ssh-keyscan', '-T', '2', '-p', str(port), host],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+        if result is not None and result.returncode == 0:
+            lines = [
+                line for line in result.stdout.decode(
+                    'ascii', errors='strict').splitlines()
+                if line and not line.startswith('#')
+            ]
+            if (lines and all(
+                    line.startswith(expected_prefix)
+                    and len(line.split()) >= 3 for line in lines)):
+                with open(known_hosts_path, 'x', encoding='ascii') as stream:
+                    stream.write('\n'.join(lines) + '\n')
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.chmod(known_hosts_path, 0o600)
+                return known_hosts_path
+        time.sleep(2)
+    raise HypervisorError(
+        f'VM SSH host key not available after {timeout}s')
+
+
+def _windows_key_rotation_script():
+    """Replace the bootstrap key and schedule a reboot to revoke sessions."""
+    return r"""
+$ErrorActionPreference='Stop'
+$source=$null
+$stream=$null
+try{
+$source=[Console]::OpenStandardInput()
+$memory=New-Object IO.MemoryStream
+$buffer=New-Object byte[] 4096
+$total=0
+while(($count=$source.Read($buffer,0,$buffer.Length)) -gt 0){
+$total+=$count
+if($total -gt 16384){throw 'oversize'}
+$memory.Write($buffer,0,$count)
+}
+$source.Dispose();$source=$null
+$utf8=New-Object Text.UTF8Encoding($false,$true)
+$key=$utf8.GetString($memory.ToArray()).TrimEnd([char[]]@([char]13,[char]10))
+if($key -notmatch '^ssh-ed25519 [A-Za-z0-9+/]+={0,3}( [\x20-\x7e]*)?$'){throw 'key'}
+$whoami=[IO.Path]::Combine([Environment]::GetFolderPath('System'),'whoami.exe')
+$groups=@(& $whoami /groups /fo csv /nh)
+if($LASTEXITCODE -ne 0){throw 'groups'}
+$parsedGroups=@($groups|ConvertFrom-Csv -Header Name,Type,Sid,Attributes)
+if($parsedGroups.Count -eq 0){throw 'groups'}
+$isAdministrator=$false
+foreach($group in $parsedGroups){
+try{$sid=[Security.Principal.SecurityIdentifier]::new([string]$group.Sid)}
+catch{throw 'groups'}
+if($sid.Value -ceq 'S-1-5-32-544'){$isAdministrator=$true}
+}
+if($isAdministrator){
+$target=[IO.Path]::Combine($env:ProgramData,'ssh','administrators_authorized_keys')
+}else{
+$target=[IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'),'.ssh','authorized_keys')
+}
+$parent=[IO.Path]::GetDirectoryName($target)
+if(-not [IO.File]::Exists($target)){throw 'missing'}
+if(([IO.File]::GetAttributes($parent) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'reparse'}
+if(([IO.File]::GetAttributes($target) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'reparse'}
+$bytes=[Text.Encoding]::ASCII.GetBytes($key+"`n")
+$stream=New-Object IO.FileStream($target,[IO.FileMode]::Truncate,[IO.FileAccess]::Write,[IO.FileShare]::None)
+$stream.Write($bytes,0,$bytes.Length)
+$stream.Flush($true)
+$stream.Dispose();$stream=$null
+$actual=[IO.File]::ReadAllText($target,[Text.Encoding]::ASCII).TrimEnd([char[]]@([char]13,[char]10))
+if($actual -cne $key){throw 'verify'}
+[Console]::Out.WriteLine('VMOCS_KEY_ROTATED_REBOOT_SCHEDULED')
+[Console]::Out.Flush()
+$shutdown=[IO.Path]::Combine($env:SystemRoot,'System32','shutdown.exe')
+& $shutdown /r /t 5 /f
+if($LASTEXITCODE -ne 0){throw 'reboot'}
+exit 0
+}catch{
+try{if($stream){$stream.Dispose()}}catch{}
+try{if($source){$source.Dispose()}}catch{}
+[Console]::Error.WriteLine('VMoCS SSH key rotation failed.')
+exit 88
+}
+""".strip()
+
+
+def _windows_powershell_command(script):
+    encoded = base64.b64encode(script.encode('utf-16le')).decode('ascii')
+    return subprocess.list2cmdline((
+        'powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
+        '-EncodedCommand', encoded))
+
+
+def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
+                                ssh_user='vagrant', known_hosts_path=None,
+                                ephemeral_key_path=None,
+                                reboot_observed=None, qmp_barrier=None,
+                                force_reset=None, forced_reset_observed=None):
+    """Replace the Windows bootstrap key, reboot, and verify the new key."""
+    if not ephemeral_key_path:
+        raise HypervisorError(
+            'Windows Vagrant key rotation requires an ephemeral key')
+    if reboot_observed is None:
+        raise HypervisorError(
+            'Windows Vagrant key rotation requires QMP reboot observation')
+    if qmp_barrier is None:
+        raise HypervisorError(
+            'Windows Vagrant key rotation requires a QMP ordering barrier')
+    command = [
+        'ssh', *_ssh_identity_options(VAGRANT_KEY, isolated=True),
+        *_ssh_host_key_options(known_hosts_path),
+        '-o', 'BatchMode=yes',
+        '-o', 'ConnectTimeout=2',
+        '-T', '-p', str(port), f'{ssh_user}@{host}',
+        _windows_powershell_command(_windows_key_rotation_script()),
+    ]
+    deadline = time.monotonic() + timeout
+    # Discard boot-time events before invoking the fixed rotation command.
+    # A second, synchronous QMP barrier after its marker establishes the
+    # security-relevant reboot boundary.
+    reboot_observed.clear()
+    while time.monotonic() < deadline:
+        remaining = max(0, deadline - time.monotonic())
+        try:
+            result = subprocess.run(
+                command, input=(pubkey + '\n').encode('ascii'),
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                check=False, timeout=max(0.1, min(15, remaining)))
+        except subprocess.TimeoutExpired as exc:
+            # subprocess.run() kills and reaps ssh on timeout but preserves
+            # output received before the disconnect. The fixed script flushes
+            # its marker after replacing the key and before requesting reboot.
+            result = exc
+        except OSError:
+            result = None
+        stdout = getattr(result, 'stdout', b'') or b''
+        if isinstance(stdout, str):
+            stdout = stdout.encode('utf-8', errors='replace')
+        if b'VMOCS_KEY_ROTATED_REBOOT_SCHEDULED' in stdout:
+            # The script schedules its reboot five seconds after flushing the
+            # marker. Drain all earlier QMP traffic, then require a newer guest
+            # reset. If the reboot races ahead of this barrier, fail closed.
+            qmp_barrier()
+            reboot_observed.clear()
+            break
+        if reboot_observed.is_set():
+            # A hard reboot can sever OpenSSH before its channel delivers the
+            # already-flushed marker. The event is newer than clear() above;
+            # accept this path only after the per-launch key authenticates.
+            # The caller subsequently proves old-key failure and new-key
+            # success again before allowing sensitive guest staging.
+            logging.info(
+                'Windows reboot observed without SSH rotation marker; '
+                'verifying the ephemeral key')
+            remaining = max(0, deadline - time.monotonic())
+            if not wait_for_ssh(
+                    host, port, ephemeral_key_path, remaining, ssh_user,
+                    authenticate=True, known_hosts_path=known_hosts_path,
+                    isolated_identity=True):
+                raise HypervisorError(
+                    'Windows ephemeral SSH key was not accepted after the '
+                    'observed key-rotation reboot')
+            if force_reset is None or forced_reset_observed is None:
+                raise HypervisorError(
+                    'lost Windows key-rotation marker requires a '
+                    'host-controlled QMP reset')
+            # The guest reset may have been delayed or unrelated to this SSH
+            # attempt. After proving the new key was installed, issue a fresh
+            # host-controlled reset and observe its distinct QMP reason. This
+            # causally revokes every session authenticated with the old key.
+            forced_reset_observed.clear()
+            qmp_barrier()
+            forced_reset_observed.clear()
+            force_reset()
+            remaining = max(0, deadline - time.monotonic())
+            if not forced_reset_observed.wait(remaining):
+                raise HypervisorError(
+                    'QEMU did not observe the host-controlled Windows '
+                    'SSH handoff reset')
+            remaining = max(0, deadline - time.monotonic())
+            if not wait_for_ssh(
+                    host, port, ephemeral_key_path, remaining, ssh_user,
+                    authenticate=True, known_hosts_path=known_hosts_path,
+                    isolated_identity=True):
+                raise HypervisorError(
+                    'Windows ephemeral SSH key was not accepted after the '
+                    'host-controlled SSH handoff reset')
+            return
+        returncode = getattr(result, 'returncode', None)
+        if returncode is not None and returncode != 255:
+            raise HypervisorError('Windows Vagrant key rotation failed')
+        remaining = max(0, deadline - time.monotonic())
+        if remaining:
+            time.sleep(min(2, remaining))
+    else:
+        raise HypervisorError(
+            f'vagrant key rotation timed out after {timeout}s')
+
+    remaining = max(0, deadline - time.monotonic())
+    if not reboot_observed.wait(remaining):
+        raise HypervisorError(
+            'QEMU did not observe the Windows SSH handoff guest-reset event')
+    remaining = max(0, deadline - time.monotonic())
+    if not wait_for_ssh(
+            host, port, ephemeral_key_path, remaining, ssh_user,
+            authenticate=True, known_hosts_path=known_hosts_path,
+            isolated_identity=True):
+        raise HypervisorError(
+            'Windows ephemeral SSH key was not accepted after reboot')
+
+
+def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant',
+                        known_hosts_path=None, command_style='posix',
+                        ephemeral_key_path=None, reboot_observed=None,
+                        qmp_barrier=None, force_reset=None,
+                        forced_reset_observed=None):
+    """Install an ephemeral key, revoking the well-known Vagrant key.
+
+    POSIX guests use scp. Windows guests replace the active authorized-keys
+    file through a fixed PowerShell command with the public key on SSH stdin.
     """
+    if command_style == 'windows':
+        return _rotate_windows_vagrant_key(
+            host, port, pubkey, timeout, ssh_user, known_hosts_path,
+            ephemeral_key_path, reboot_observed, qmp_barrier, force_reset,
+            forced_reset_observed)
     with tempfile.NamedTemporaryFile(mode='w', suffix='.pub', delete=False) as f:
         f.write(pubkey + '\n')
         tmp_pub = f.name
@@ -123,9 +517,8 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
         while time.monotonic() < deadline:
             ret = subprocess.call(
                 ['scp',
-                 '-i', VAGRANT_KEY,
-                 '-o', 'StrictHostKeyChecking=no',
-                 '-o', 'UserKnownHostsFile=/dev/null',
+                 *_ssh_identity_options(VAGRANT_KEY),
+                 *_ssh_host_key_options(known_hosts_path),
                  '-o', 'ConnectTimeout=2',
                  '-P', str(port),
                  tmp_pub,
@@ -140,7 +533,8 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant'):
 
 
 def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
-                 stop_requested=None, authenticate=False):
+                 stop_requested=None, authenticate=False,
+                 known_hosts_path=None, isolated_identity=False):
     """Poll for an SSH banner and, when requested, a successful key login."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -151,23 +545,12 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
                 if s.recv(256).startswith(b'SSH-'):
                     if not authenticate:
                         return True
-                    argv = [
-                        'ssh',
-                        '-o', 'BatchMode=yes',
-                        '-o', 'StrictHostKeyChecking=no',
-                        '-o', 'UserKnownHostsFile=/dev/null',
-                        '-o', 'ConnectTimeout=2',
-                    ]
-                    if key_path:
-                        argv += ['-i', key_path]
-                    argv += [
-                        '-p', str(port),
-                        f'{ssh_user}@{host}',
-                        'exit 0',
-                    ]
-                    if subprocess.call(
-                            argv, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL) == 0:
+                    remaining = max(0.1, deadline - time.monotonic())
+                    if key_path and _ssh_key_authenticates(
+                            host, port, key_path, ssh_user,
+                            known_hosts_path=known_hosts_path,
+                            timeout=min(10, remaining),
+                            isolated_identity=isolated_identity):
                         return True
         except OSError:
             pass
@@ -176,7 +559,8 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
 
 
 def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
-              supervised=False, save_path=None, resume_path=None):
+              supervised=False, save_path=None, resume_path=None,
+              checkpoint_blocked_reason=None, pin_ssh_host_key=False):
     """
     Launch a VM and wait for SSH. Returns a dict with runtime metadata.
 
@@ -194,6 +578,9 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     if job_id is None:
         job_id = os.getpid()
 
+    if save_path and checkpoint_blocked_reason:
+        raise HypervisorError(
+            f'checkpoint is disabled: {checkpoint_blocked_reason}')
     if save_path:
         save_path = prepare_checkpoint_destination(save_path)
     if resume_path:
@@ -203,16 +590,28 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     else:
         resume_disk = None
 
+    # Detect snapshot: template.snapshot points to a snapshot dir
+    snap_dir = template.snapshot
+    using_snapshot = bool(not resume_disk and snap_dir and os.path.isfile(
+        os.path.join(snap_dir, 'memory')))
+    boot_mode = template.boot_mode
+    ephemeral_ssh_key = _is_per_launch_ssh_key(
+        template.insert_key, using_snapshot, boot_mode)
+    if (pin_ssh_host_key and template.ssh_command_style == 'windows'
+            and boot_mode != 'vagrant'):
+        raise HypervisorError(
+            'Windows environment forwarding currently requires '
+            'boot-mode: vagrant for a verified SSH credential handoff')
+    if pin_ssh_host_key and not ephemeral_ssh_key:
+        raise HypervisorError(
+            'Windows environment forwarding requires a fresh per-launch '
+            'SSH key and does not support cloud-init memory snapshots')
+
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
     os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
     if os.path.exists(os.path.join(runtime_dir, 'vm.json')):
         raise HypervisorError(
             f'runtime already exists for job {job_id}: {runtime_dir}')
-
-    # Detect snapshot: template.snapshot points to a snapshot dir
-    snap_dir = template.snapshot
-    using_snapshot = bool(not resume_disk and snap_dir and os.path.isfile(
-        os.path.join(snap_dir, 'memory')))
 
     # Resolve base image: a cold checkpoint overrides the template's boot
     # snapshot but keeps the template's current device/sidecar configuration.
@@ -237,8 +636,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     overlay = os.path.join(runtime_dir, 'disk.qcow2')
     VMImage.create_cow_overlay(base_image, overlay)
 
-    # 2. SSH keypair — always ephemeral; snapshots reuse their pre-burned key
-    boot_mode = template.boot_mode
+    # 2. SSH keypair — cloud-init memory snapshots reuse their snapshot key.
     host_user = None
     if template.host_user_identity:
         if boot_mode != 'cloud-init':
@@ -333,6 +731,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
     )
 
     ssh_timeout = template.ssh_timeout
+    known_hosts_path = None
     meta = {
         'job_id': job_id,
         'pid': None,
@@ -341,6 +740,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'ssh_user': ssh_user,
         'ssh_command_style': template.ssh_command_style,
         'key_path': key_path,
+        'ephemeral_ssh_key': ephemeral_ssh_key,
+        'ssh_host_key_pinned': False,
+        'secure_ssh_handoff_verified': False,
+        'known_hosts_path': None,
         'overlay': overlay,
         'base_image': base_image,
         'qmp_socket': qmp_socket,
@@ -353,6 +756,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'save_path': save_path,
         'resume_path': resume_path,
         'checkpoint_id': str(uuid.uuid4()) if save_path else None,
+        'checkpoint_blocked_reason': checkpoint_blocked_reason,
         'ssh_timeout': ssh_timeout,
         'state': 'starting',
         'boot_id': read_boot_id(),
@@ -362,6 +766,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
     manager = SidecarManager(sidecar_plans)
     qemu_pid = None
+    mon = None
     try:
         manager.start_all()
         meta['sidecars'] = manager.metadata()
@@ -402,24 +807,72 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
                     f'{exc}; QEMU startup log: {qemu_log[-4096:]}') from exc
             raise
 
+        reboot_observed = None
+        forced_reset_observed = None
+        secure_windows_handoff = bool(
+            pin_ssh_host_key and boot_mode == 'vagrant' and insert_key
+            and template.ssh_command_style == 'windows')
+        if secure_windows_handoff:
+            reboot_observed = threading.Event()
+            forced_reset_observed = threading.Event()
+
+            def _observe_rotation_reboot(event):
+                if _is_guest_reboot_qmp_event(event):
+                    reboot_observed.set()
+                if _is_host_reset_qmp_event(event):
+                    forced_reset_observed.set()
+                return True
+
+            mon.add_event_handler(_observe_rotation_reboot)
+
         # Snapshot restore: wait for incoming migration to finish, then cont
         if using_snapshot:
             while mon.query_status() == 'inmigrate':
                 time.sleep(1)
         mon.cont()
-        mon.close()  # Release QMP connection — QEMU serves one client at a time
+        if pin_ssh_host_key:
+            known_hosts_path = _capture_ssh_host_keys(
+                '127.0.0.1', ssh_port, runtime_dir, ssh_timeout)
+            if mon.query_status() != 'running':
+                raise HypervisorError(
+                    'QEMU stopped while the SSH host key was being pinned')
+            meta['ssh_host_key_pinned'] = True
+            meta['known_hosts_path'] = known_hosts_path
+            _write_metadata(runtime_dir, meta)
         logging.info('VM booting, waiting for SSH...')
 
         # Vagrant: replace the well-known key with the ephemeral key.
         if boot_mode == 'vagrant' and insert_key:
             _rotate_vagrant_key(
-                '127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user)
+                '127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user,
+                known_hosts_path=known_hosts_path,
+                command_style=(
+                    'windows' if secure_windows_handoff else 'posix'),
+                ephemeral_key_path=key_path,
+                reboot_observed=reboot_observed,
+                qmp_barrier=mon.query_status,
+                force_reset=mon.reset,
+                forced_reset_observed=forced_reset_observed)
+
+        mon.close()  # Release QMP connection — QEMU serves one client at a time
+        mon = None
 
         # 7. Wait for SSH (ephemeral key for both modes)
         if not wait_for_ssh(
                 '127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user,
-                authenticate=host_user is not None):
+                authenticate=_requires_authenticated_ssh_readiness(
+                    host_user, secure_windows_handoff),
+                known_hosts_path=known_hosts_path,
+                isolated_identity=secure_windows_handoff):
             raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
+
+        if (pin_ssh_host_key and boot_mode == 'vagrant'
+                and template.ssh_command_style == 'windows'):
+            _verify_windows_ssh_handoff(
+                '127.0.0.1', ssh_port, key_path, ssh_user,
+                known_hosts_path)
+            meta['secure_ssh_handoff_verified'] = True
+            _write_metadata(runtime_dir, meta)
 
         # 8. Write final metadata and retain live manager handles in memory.
         meta['state'] = 'running'
@@ -427,6 +880,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         meta['_sidecar_manager'] = manager
         return meta
     except Exception:
+        if mon is not None:
+            mon.close()
         if qemu_pid is not None:
             _kill_qemu(qemu_pid, timeout=2)
             try:
@@ -504,6 +959,9 @@ def teardown_vm(job_id, runtime_dir=None, runtime_base='/var/run/vmocs',
         meta = json.load(f)
 
     requested_save = save_path or meta.get('save_path')
+    if requested_save and meta.get('checkpoint_blocked_reason'):
+        raise HypervisorError(
+            f'checkpoint is disabled: {meta["checkpoint_blocked_reason"]}')
     if save_path:
         requested_save = prepare_checkpoint_destination(save_path)
         meta['save_path'] = requested_save

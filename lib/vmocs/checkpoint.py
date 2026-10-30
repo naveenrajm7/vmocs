@@ -178,6 +178,9 @@ def create_checkpoint(meta, path=None):
     requested = path or meta.get('save_path')
     if not requested:
         raise ImageError('no checkpoint destination was requested')
+    if meta.get('checkpoint_blocked_reason'):
+        raise ImageError(
+            f'checkpoint is disabled: {meta["checkpoint_blocked_reason"]}')
     destination = checkpoint_path(requested)
     checkpoint_id = meta.get('checkpoint_id')
 

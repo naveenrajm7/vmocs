@@ -66,11 +66,44 @@ Forward only explicitly selected task variables with repeatable
        --vm-forward-env=SLURM_GHA_CLAIM_TOKEN \
        /opt/slurm-gha/bootstrap.sh
 
-Only variable names are included in ``srun`` and SSH arguments. Values are
-read from the Slurm task environment by ``vmocs run``, transmitted over SSH
-standard input, stored briefly in a ``0600`` file under a private guest tmpfs
-directory, and deleted immediately before the guest command executes. The
-guest command should consume and unset one-time secrets promptly.
+``srun`` arguments contain only the selected variable names; values are absent
+from the command arguments passed to Slurm and SSH, but remain present in the
+Slurm task environment. ``vmocs run`` reads them there and transmits them over
+a separate, non-interactive SSH connection. POSIX guests briefly stage a
+``0600`` file under a private guest tmpfs directory. Windows guests stage
+versioned JSON under the connected user's local application-data directory in
+a directory with a protected, user-only ACL. The payload is deleted before
+the guest command executes, so that command retains its original standard
+input and terminal behavior. The guest command should consume and unset
+one-time secrets promptly.
+
+Windows rejects a final child environment block over 32,767 UTF-16 code units,
+including inherited variables, before the staged payload is removed and the
+child is started.
+
+For a Windows bootstrap, invoke an explicit executable and forward the guest
+CA pathname like any other value::
+
+   export SLURM_GHA_CA_FILE='C:\slurm-gha\callback-ca.cer'
+   srun -n1 --vm-image windows-runner \
+       --vm-forward-env=SLURM_GHA_CA_FILE \
+       powershell.exe -NoLogo -NoProfile -File 'C:\slurm-gha\bootstrap.ps1'
+
+``SLURM_GHA_CA_FILE`` contains only the pathname. The public CA certificate
+must already be installed in the Windows image at that location; vmocs does
+not copy the certificate, and a TLS private key must never be installed in the
+guest. The Windows template must set ``insert-key: true`` so vmocs replaces
+the image's bootstrap key with an ephemeral key. It requires a QMP-confirmed
+full guest reboot, proves that the new key succeeds and the bootstrap key
+fails, and pins the first guest SSH host key (trust on first use) before
+staging credentials. If SSH loses the fixed pre-reboot success marker, vmocs
+first proves the ephemeral key, then forces and observes a fresh QMP reset as
+the session-revocation boundary. The template must also use
+``boot-mode: vagrant``.
+Windows environment forwarding cannot be combined with ``--vm-save``, and a
+later save request for the same VM is also refused. This Vagrant handoff
+assumes a trusted compute host; a hostile-local-co-tenant threat model requires
+pre-``sshd`` per-launch key injection or isolation of the QEMU host forward.
 
 Request resources
 -----------------

@@ -1,5 +1,6 @@
 """CLI lifecycle supervision tests."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,6 +9,96 @@ pytest.importorskip('click')
 
 from vmocs import VmocsError
 from vmocs import cli
+
+
+def test_run_rejects_windows_forward_env_with_save_before_launch(monkeypatch):
+    from click.testing import CliRunner
+
+    template = SimpleNamespace(
+        ssh_command_style='windows', insert_key=True, boot_mode='vagrant')
+    monkeypatch.setattr(cli, '_load', lambda _path: (object(), {'win': template}))
+    launch = MagicMock()
+    monkeypatch.setattr(cli, 'launch_vm', launch)
+
+    result = CliRunner().invoke(
+        cli.cli,
+        ['run', 'win', '--save', '/checkpoint', '--forward-env', 'TOKEN',
+         '--', 'powershell.exe'],
+        env={'TOKEN': 'secret'})
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli.VmocsError)
+    assert 'cannot be combined with --save' in str(result.exception)
+    launch.assert_not_called()
+
+
+def test_run_rejects_windows_forward_env_without_ephemeral_key(monkeypatch):
+    from click.testing import CliRunner
+
+    template = SimpleNamespace(
+        ssh_command_style='windows', insert_key=False, boot_mode='vagrant')
+    monkeypatch.setattr(cli, '_load', lambda _path: (object(), {'win': template}))
+    launch = MagicMock()
+    monkeypatch.setattr(cli, 'launch_vm', launch)
+
+    result = CliRunner().invoke(
+        cli.cli,
+        ['run', 'win', '--forward-env', 'TOKEN', '--', 'powershell.exe'],
+        env={'TOKEN': 'secret'})
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli.VmocsError)
+    assert 'insert-key: true' in str(result.exception)
+    launch.assert_not_called()
+
+
+def test_run_rejects_windows_forward_env_without_vagrant_handoff(monkeypatch):
+    from click.testing import CliRunner
+
+    template = SimpleNamespace(
+        ssh_command_style='windows', insert_key=True, boot_mode='cloud-init')
+    monkeypatch.setattr(cli, '_load', lambda _path: (object(), {'win': template}))
+    launch = MagicMock()
+    monkeypatch.setattr(cli, 'launch_vm', launch)
+
+    result = CliRunner().invoke(
+        cli.cli,
+        ['run', 'win', '--forward-env', 'TOKEN', '--', 'powershell.exe'],
+        env={'TOKEN': 'secret'})
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli.VmocsError)
+    assert 'boot-mode: vagrant' in str(result.exception)
+    launch.assert_not_called()
+
+
+def test_run_marks_windows_forwarding_as_not_checkpointable(monkeypatch):
+    from click.testing import CliRunner
+
+    template = SimpleNamespace(
+        ssh_command_style='windows', insert_key=True, boot_mode='vagrant')
+    monkeypatch.setattr(cli, '_load', lambda _path: (object(), {'win': template}))
+    launch = MagicMock(return_value={
+        'job_id': 42,
+        'key_path': '/runtime/id_ed25519',
+        'ssh_port': 60222,
+        'ssh_user': 'vagrant',
+        'ssh_timeout': 180,
+    })
+    monkeypatch.setattr(cli, 'launch_vm', launch)
+    attached = MagicMock(return_value=0)
+    monkeypatch.setattr(cli, 'run_attached_session', attached)
+
+    result = CliRunner().invoke(
+        cli.cli,
+        ['run', 'win', '--forward-env', 'TOKEN', '--', 'powershell.exe'],
+        env={'TOKEN': 'secret'})
+
+    assert result.exit_code == 0
+    assert launch.call_args.kwargs['checkpoint_blocked_reason'] == (
+        cli.WINDOWS_FORWARDING_CHECKPOINT_REASON)
+    assert launch.call_args.kwargs['pin_ssh_host_key'] is True
+    attached.assert_called_once()
 
 
 def test_blocking_launch_fails_when_critical_sidecar_exits(monkeypatch):

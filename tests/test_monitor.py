@@ -42,3 +42,13 @@ def test_qmp_command_after_disconnect_fails_immediately():
     finally:
         os.close(monitor._stop_r)
         os.close(monitor._stop_w)
+
+
+def test_reset_uses_qmp_system_reset():
+    monitor = QemuMonitor.__new__(QemuMonitor)
+    monitor._validate = MagicMock()
+
+    monitor.reset()
+
+    monitor._validate.assert_called_once_with(
+        '{"execute": "system_reset"}\n\n')

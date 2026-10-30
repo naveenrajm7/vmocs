@@ -38,6 +38,12 @@ from .sidecars import (
 )
 
 
+_SSH_AUTHENTICATED = 'authenticated'
+_SSH_REJECTED = 'rejected'
+_SSH_INDETERMINATE = 'indeterminate'
+_SYSTEM_SSH_CONFIG = '/etc/ssh/ssh_config'
+
+
 def _current_host_user():
     """Return the submitter identity that QEMU and shared files run as."""
     uid = os.getuid()
@@ -118,6 +124,11 @@ def _is_per_launch_ssh_key(insert_key, using_snapshot, boot_mode):
         and not (using_snapshot and boot_mode == 'cloud-init'))
 
 
+def _requires_authenticated_ssh_readiness(host_user, secure_windows_handoff):
+    """Keep legacy banner readiness except for identity-bound launches."""
+    return host_user is not None or secure_windows_handoff
+
+
 def _ssh_host_key_options(known_hosts_path=None):
     """Return strict pinned-host options, or legacy permissive options."""
     if known_hosts_path:
@@ -131,10 +142,14 @@ def _ssh_host_key_options(known_hosts_path=None):
     ]
 
 
-def _ssh_identity_options(key_path):
-    """Select exactly one SSH identity instead of consulting an agent."""
+def _ssh_identity_options(key_path, isolated=False):
+    """Return legacy identity selection or the isolated Windows handoff set."""
+    if not isolated:
+        return ['-i', key_path]
     return [
-        '-F', '/dev/null',
+        # Read the trusted system configuration (including site crypto policy)
+        # while skipping user-controlled ~/.ssh/config.
+        '-F', _SYSTEM_SSH_CONFIG,
         '-i', key_path,
         '-o', 'IdentitiesOnly=yes',
         '-o', 'IdentityAgent=none',
@@ -148,38 +163,92 @@ def _ssh_identity_options(key_path):
     ]
 
 
-def _ssh_key_authenticates(host, port, key_path, ssh_user='root',
-                           known_hosts_path=None, timeout=10):
-    """Return whether KEY_PATH alone authenticates to the guest."""
+def _ssh_key_authentication_result(
+        host, port, key_path, ssh_user='root', known_hosts_path=None,
+        timeout=10, isolated_identity=False):
+    """Classify a key login without treating transport errors as rejection."""
     command = [
-        'ssh',
-        *_ssh_identity_options(key_path),
+        'ssh', '-vvv',
+        *_ssh_identity_options(key_path, isolated=isolated_identity),
         *_ssh_host_key_options(known_hosts_path),
         '-o', 'BatchMode=yes',
         '-o', 'ConnectTimeout=2',
         '-T', '-p', str(port), f'{ssh_user}@{host}', 'exit 0',
     ]
+    environment = os.environ.copy()
+    environment['LC_ALL'] = 'C'
+    environment['LANG'] = 'C'
     try:
-        return subprocess.run(
+        result = subprocess.run(
             command, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            check=False, timeout=timeout).returncode == 0
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            check=False, timeout=timeout, env=environment)
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return _SSH_INDETERMINATE
+
+    if result.returncode == 0:
+        return _SSH_AUTHENTICATED
+
+    stderr = result.stderr or b''
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode('utf-8', errors='replace')
+    diagnostics = stderr.splitlines()
+    terminal_diagnostic = diagnostics[-1].strip() if diagnostics else ''
+    denied = re.fullmatch(
+        rf'{re.escape(ssh_user)}@{re.escape(host)}: '
+        r'Permission denied \([A-Za-z0-9@._,+-]+\)\.',
+        terminal_diagnostic)
+    if result.returncode == 255 and denied:
+        # A terminal Permission denied diagnostic is not enough: OpenSSH can
+        # skip an unusable or locally disallowed private key and emit the same
+        # message.  Only classify rejection when DEBUG3 proves that this exact
+        # key was offered and the server answered USERAUTH_FAILURE (type 51).
+        offer_prefix = f'debug1: Offering public key: {key_path} '
+        for index, diagnostic in enumerate(diagnostics):
+            if not (diagnostic.startswith(offer_prefix)
+                    and diagnostic.endswith(' explicit')):
+                continue
+            sent_offer = False
+            for response in diagnostics[index + 1:]:
+                if response.startswith('debug1: Offering public key: '):
+                    break
+                if response == 'debug3: send packet: type 50':
+                    sent_offer = True
+                elif (sent_offer
+                      and response == 'debug3: receive packet: type 51'):
+                    return _SSH_REJECTED
+    return _SSH_INDETERMINATE
+
+
+def _ssh_key_authenticates(host, port, key_path, ssh_user='root',
+                           known_hosts_path=None, timeout=10,
+                           isolated_identity=False):
+    """Return whether KEY_PATH authenticates; indeterminate failures are false."""
+    return _ssh_key_authentication_result(
+        host, port, key_path, ssh_user,
+        known_hosts_path=known_hosts_path, timeout=timeout,
+        isolated_identity=isolated_identity) == _SSH_AUTHENTICATED
 
 
 def _verify_windows_ssh_handoff(host, port, ephemeral_key_path,
                                 ssh_user, known_hosts_path):
     """Prove new-key success, bootstrap-key failure, then new-key success."""
-    authenticate = lambda key: _ssh_key_authenticates(
-        host, port, key, ssh_user, known_hosts_path=known_hosts_path)
-    if not authenticate(ephemeral_key_path):
+    def probe(key_path):
+        return _ssh_key_authentication_result(
+            host, port, key_path, ssh_user,
+            known_hosts_path=known_hosts_path, isolated_identity=True)
+
+    if probe(ephemeral_key_path) != _SSH_AUTHENTICATED:
         raise HypervisorError(
             'Windows ephemeral SSH key could not be verified after reboot')
-    if authenticate(VAGRANT_KEY):
+    bootstrap_result = probe(VAGRANT_KEY)
+    if bootstrap_result == _SSH_AUTHENTICATED:
         raise HypervisorError(
             'Windows bootstrap SSH key is still accepted after rotation')
-    if not authenticate(ephemeral_key_path):
+    if bootstrap_result != _SSH_REJECTED:
+        raise HypervisorError(
+            'Windows bootstrap SSH key revocation could not be proven')
+    if probe(ephemeral_key_path) != _SSH_AUTHENTICATED:
         raise HypervisorError(
             'Windows ephemeral SSH key could not be reconfirmed '
             'after bootstrap-key revocation')
@@ -258,9 +327,18 @@ $source.Dispose();$source=$null
 $utf8=New-Object Text.UTF8Encoding($false,$true)
 $key=$utf8.GetString($memory.ToArray()).TrimEnd([char[]]@([char]13,[char]10))
 if($key -notmatch '^ssh-ed25519 [A-Za-z0-9+/]+={0,3}( [\x20-\x7e]*)?$'){throw 'key'}
-$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
-$principal=New-Object Security.Principal.WindowsPrincipal($identity)
-if($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+$whoami=[IO.Path]::Combine([Environment]::GetFolderPath('System'),'whoami.exe')
+$groups=@(& $whoami /groups /fo csv /nh)
+if($LASTEXITCODE -ne 0){throw 'groups'}
+$parsedGroups=@($groups|ConvertFrom-Csv -Header Name,Type,Sid,Attributes)
+if($parsedGroups.Count -eq 0){throw 'groups'}
+$isAdministrator=$false
+foreach($group in $parsedGroups){
+try{$sid=[Security.Principal.SecurityIdentifier]::new([string]$group.Sid)}
+catch{throw 'groups'}
+if($sid.Value -ceq 'S-1-5-32-544'){$isAdministrator=$true}
+}
+if($isAdministrator){
 $target=[IO.Path]::Combine($env:ProgramData,'ssh','administrators_authorized_keys')
 }else{
 $target=[IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'),'.ssh','authorized_keys')
@@ -314,7 +392,7 @@ def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
         raise HypervisorError(
             'Windows Vagrant key rotation requires a QMP ordering barrier')
     command = [
-        'ssh', *_ssh_identity_options(VAGRANT_KEY),
+        'ssh', *_ssh_identity_options(VAGRANT_KEY, isolated=True),
         *_ssh_host_key_options(known_hosts_path),
         '-o', 'BatchMode=yes',
         '-o', 'ConnectTimeout=2',
@@ -362,7 +440,8 @@ def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
             remaining = max(0, deadline - time.monotonic())
             if not wait_for_ssh(
                     host, port, ephemeral_key_path, remaining, ssh_user,
-                    authenticate=True, known_hosts_path=known_hosts_path):
+                    authenticate=True, known_hosts_path=known_hosts_path,
+                    isolated_identity=True):
                 raise HypervisorError(
                     'Windows ephemeral SSH key was not accepted after the '
                     'observed key-rotation reboot')
@@ -386,7 +465,8 @@ def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
             remaining = max(0, deadline - time.monotonic())
             if not wait_for_ssh(
                     host, port, ephemeral_key_path, remaining, ssh_user,
-                    authenticate=True, known_hosts_path=known_hosts_path):
+                    authenticate=True, known_hosts_path=known_hosts_path,
+                    isolated_identity=True):
                 raise HypervisorError(
                     'Windows ephemeral SSH key was not accepted after the '
                     'host-controlled SSH handoff reset')
@@ -408,7 +488,8 @@ def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
     remaining = max(0, deadline - time.monotonic())
     if not wait_for_ssh(
             host, port, ephemeral_key_path, remaining, ssh_user,
-            authenticate=True, known_hosts_path=known_hosts_path):
+            authenticate=True, known_hosts_path=known_hosts_path,
+            isolated_identity=True):
         raise HypervisorError(
             'Windows ephemeral SSH key was not accepted after reboot')
 
@@ -438,13 +519,11 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant',
                 ['scp',
                  *_ssh_identity_options(VAGRANT_KEY),
                  *_ssh_host_key_options(known_hosts_path),
-                 '-o', 'BatchMode=yes',
                  '-o', 'ConnectTimeout=2',
                  '-P', str(port),
                  tmp_pub,
                  f'{ssh_user}@{host}:.ssh/authorized_keys'],
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL)
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if ret == 0:
                 return
             time.sleep(2)
@@ -455,7 +534,7 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant',
 
 def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
                  stop_requested=None, authenticate=False,
-                 known_hosts_path=None):
+                 known_hosts_path=None, isolated_identity=False):
     """Poll for an SSH banner and, when requested, a successful key login."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -470,7 +549,8 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
                     if key_path and _ssh_key_authenticates(
                             host, port, key_path, ssh_user,
                             known_hosts_path=known_hosts_path,
-                            timeout=min(10, remaining)):
+                            timeout=min(10, remaining),
+                            isolated_identity=isolated_identity):
                         return True
         except OSError:
             pass
@@ -729,8 +809,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
 
         reboot_observed = None
         forced_reset_observed = None
-        if (boot_mode == 'vagrant' and insert_key
-                and template.ssh_command_style == 'windows'):
+        secure_windows_handoff = bool(
+            pin_ssh_host_key and boot_mode == 'vagrant' and insert_key
+            and template.ssh_command_style == 'windows')
+        if secure_windows_handoff:
             reboot_observed = threading.Event()
             forced_reset_observed = threading.Event()
 
@@ -764,7 +846,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
             _rotate_vagrant_key(
                 '127.0.0.1', ssh_port, pubkey, ssh_timeout, ssh_user,
                 known_hosts_path=known_hosts_path,
-                command_style=template.ssh_command_style,
+                command_style=(
+                    'windows' if secure_windows_handoff else 'posix'),
                 ephemeral_key_path=key_path,
                 reboot_observed=reboot_observed,
                 qmp_barrier=mon.query_status,
@@ -777,8 +860,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         # 7. Wait for SSH (ephemeral key for both modes)
         if not wait_for_ssh(
                 '127.0.0.1', ssh_port, key_path, ssh_timeout, ssh_user,
-                authenticate=insert_key or host_user is not None,
-                known_hosts_path=known_hosts_path):
+                authenticate=_requires_authenticated_ssh_readiness(
+                    host_user, secure_windows_handoff),
+                known_hosts_path=known_hosts_path,
+                isolated_identity=secure_windows_handoff):
             raise HypervisorError(f'VM SSH not ready after {ssh_timeout}s')
 
         if (pin_ssh_host_key and boot_mode == 'vagrant'

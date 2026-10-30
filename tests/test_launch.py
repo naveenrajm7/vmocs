@@ -11,11 +11,17 @@ import pytest
 from vmocs.error import HypervisorError
 from vmocs.keys import VAGRANT_KEY
 from vmocs.launch import (
+    _SSH_AUTHENTICATED,
+    _SSH_INDETERMINATE,
+    _SSH_REJECTED,
     _capture_ssh_host_keys,
     _is_guest_reboot_qmp_event,
     _is_host_reset_qmp_event,
     _is_per_launch_ssh_key,
+    _requires_authenticated_ssh_readiness,
+    _rotate_vagrant_key,
     _rotate_windows_vagrant_key,
+    _ssh_key_authentication_result,
     _ssh_key_authenticates,
     _verify_windows_ssh_handoff,
     launch_vm,
@@ -70,6 +76,18 @@ def test_authenticated_ssh_readiness_uses_pinned_host_key(monkeypatch):
     assert calls[0][1]['known_hosts_path'] == '/runtime/ssh_known_hosts'
 
 
+def test_banner_only_ssh_readiness_does_not_attempt_login(monkeypatch):
+    authenticate = MagicMock()
+    monkeypatch.setattr(
+        'vmocs.launch.socket.create_connection',
+        lambda *args, **kwargs: _BannerSocket())
+    monkeypatch.setattr(
+        'vmocs.launch._ssh_key_authenticates', authenticate)
+
+    assert wait_for_ssh('127.0.0.1', 60222, '/tmp/key', 1)
+    authenticate.assert_not_called()
+
+
 def test_ssh_key_authentication_uses_only_the_requested_identity(monkeypatch):
     captured = {}
 
@@ -82,10 +100,11 @@ def test_ssh_key_authentication_uses_only_the_requested_identity(monkeypatch):
 
     assert _ssh_key_authenticates(
         '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant',
-        known_hosts_path='/runtime/ssh_known_hosts')
+        known_hosts_path='/runtime/ssh_known_hosts',
+        isolated_identity=True)
 
     argv = captured['argv']
-    assert argv[:3] == ['ssh', '-F', '/dev/null']
+    assert argv[:4] == ['ssh', '-vvv', '-F', '/etc/ssh/ssh_config']
     assert argv[argv.index('-i') + 1] == '/runtime/id_ed25519'
     for option in (
             'IdentitiesOnly=yes', 'IdentityAgent=none',
@@ -95,6 +114,89 @@ def test_ssh_key_authentication_uses_only_the_requested_identity(monkeypatch):
             'ControlPath=none', 'StrictHostKeyChecking=yes'):
         assert option in argv
     assert captured['stdin'] == subprocess.DEVNULL
+    assert captured['stderr'] == subprocess.PIPE
+    assert captured['env']['LC_ALL'] == 'C'
+    assert 'LogLevel=ERROR' not in argv
+
+
+def test_ssh_key_authentication_preserves_legacy_config_by_default(
+        monkeypatch):
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured['argv'] = argv
+        return SimpleNamespace(returncode=0, stderr=b'')
+
+    monkeypatch.setattr('vmocs.launch.subprocess.run', fake_run)
+
+    assert _ssh_key_authenticates(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant')
+    assert captured['argv'][:4] == [
+        'ssh', '-vvv', '-i', '/runtime/id_ed25519']
+    assert '-F' not in captured['argv']
+    assert 'IdentitiesOnly=yes' not in captured['argv']
+
+
+def test_ssh_key_authentication_classifies_explicit_denial(monkeypatch):
+    diagnostic = b'''\
+debug3: receive packet: type 51
+debug1: Offering public key: /runtime/id_ed25519 ED25519 SHA256:test explicit
+debug3: send packet: type 50
+debug2: we sent a publickey packet, wait for reply
+debug3: receive packet: type 51
+debug1: Authentications that can continue: publickey
+vagrant@127.0.0.1: Permission denied (publickey).
+'''
+    monkeypatch.setattr(
+        'vmocs.launch.subprocess.run',
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=255, stderr=diagnostic))
+
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_REJECTED)
+
+
+@pytest.mark.parametrize('stderr', (
+    b'Connection reset by 127.0.0.1 port 60222\n',
+    b'Host key verification failed.\n',
+    b'vagrant@127.0.0.1: Permission denied (publickey).\n',
+    (b'debug1: Will attempt key: /runtime/id_ed25519 explicit\n'
+     b'debug3: receive packet: type 51\n'
+     b'vagrant@127.0.0.1: Permission denied (publickey).\n'),
+    (b'debug1: Offering public key: /runtime/id_ed25519 ED25519 '
+     b'SHA256:test explicit\n'
+     b'debug3: receive packet: type 51\n'
+     b'vagrant@127.0.0.1: Permission denied (publickey).\n'),
+    (b'Load key "/runtime/id_ed25519": error in libcrypto\n'
+     b'vagrant@127.0.0.1: Permission denied (publickey).\n'),
+))
+def test_ssh_key_authentication_does_not_misclassify_client_errors(
+        monkeypatch, stderr):
+    monkeypatch.setattr(
+        'vmocs.launch.subprocess.run',
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=255, stderr=stderr))
+
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_INDETERMINATE)
+
+
+@pytest.mark.parametrize('exception', (
+    OSError('ssh unavailable'),
+    subprocess.TimeoutExpired('ssh', 10),
+))
+def test_ssh_key_authentication_classifies_start_and_timeout_errors(
+        monkeypatch, exception):
+    def fail(*_args, **_kwargs):
+        raise exception
+
+    monkeypatch.setattr('vmocs.launch.subprocess.run', fail)
+
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_INDETERMINATE)
 
 
 def test_capture_ssh_host_keys_writes_private_pin(monkeypatch, tmp_path):
@@ -110,6 +212,27 @@ def test_capture_ssh_host_keys_writes_private_pin(monkeypatch, tmp_path):
     assert path == str(tmp_path / 'ssh_known_hosts')
     assert (tmp_path / 'ssh_known_hosts').read_bytes() == line
     assert (tmp_path / 'ssh_known_hosts').stat().st_mode & 0o777 == 0o600
+
+
+def test_posix_vagrant_rotation_preserves_legacy_ssh_configuration(
+        monkeypatch):
+    captured = {}
+
+    def fake_call(argv, **kwargs):
+        captured['argv'] = argv
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr('vmocs.launch.subprocess.call', fake_call)
+
+    _rotate_vagrant_key(
+        '127.0.0.1', 60222, 'ssh-ed25519 AAAATEST generated@test', 1)
+
+    assert captured['argv'][:3] == ['scp', '-i', VAGRANT_KEY]
+    assert '-F' not in captured['argv']
+    assert 'IdentitiesOnly=yes' not in captured['argv']
+    assert 'BatchMode=yes' not in captured['argv']
+    assert 'stdin' not in captured
 
 
 def test_windows_key_rotation_sends_public_key_only_on_stdin(monkeypatch):
@@ -147,6 +270,18 @@ def test_windows_key_rotation_sends_public_key_only_on_stdin(monkeypatch):
     encoded = captured['argv'][-1].split('-EncodedCommand ', 1)[1]
     script = base64.b64decode(encoded).decode('utf-16le')
     assert 'administrators_authorized_keys' in script
+    assert 'WindowsPrincipal' not in script
+    assert 'IsInRole' not in script
+    assert "GetFolderPath('System'),'whoami.exe'" in script
+    assert '/groups /fo csv /nh' in script
+    assert 'ConvertFrom-Csv' in script
+    assert 'S-1-5-32-544' in script
+    assert "if($parsedGroups.Count -eq 0){throw 'groups'}" in script
+    assert '[Security.Principal.SecurityIdentifier]::new' in script
+    assert "catch{throw 'groups'}" in script
+    assert 'break' not in script
+    assert script.index("if($LASTEXITCODE -ne 0){throw 'groups'}") < (
+        script.index('if($isAdministrator)'))
     assert '[IO.FileMode]::Truncate' in script
     assert '[IO.FileShare]::None' in script
     assert '$stream.Flush($true)' in script
@@ -217,6 +352,7 @@ def test_windows_key_rotation_recovers_lost_marker_after_qmp_reboot(
     assert all(call.kwargs == {
         'authenticate': True,
         'known_hosts_path': '/runtime/ssh_known_hosts',
+        'isolated_identity': True,
     } for call in wait_for_ssh.call_args_list)
     assert qmp_barrier.call_count == 1
     force_reset.assert_called_once_with()
@@ -313,9 +449,9 @@ def test_windows_key_rotation_requires_new_key_after_reset(monkeypatch):
 
 def test_windows_ssh_handoff_checks_new_old_new(monkeypatch):
     calls = []
-    statuses = iter((True, False, True))
+    statuses = iter((_SSH_AUTHENTICATED, _SSH_REJECTED, _SSH_AUTHENTICATED))
     monkeypatch.setattr(
-        'vmocs.launch._ssh_key_authenticates',
+        'vmocs.launch._ssh_key_authentication_result',
         lambda *args, **kwargs: calls.append((args, kwargs)) or next(statuses))
 
     _verify_windows_ssh_handoff(
@@ -327,17 +463,33 @@ def test_windows_ssh_handoff_checks_new_old_new(monkeypatch):
         VAGRANT_KEY,
         '/runtime/id_ed25519',
     ]
+    assert all(call[1]['isolated_identity'] for call in calls)
 
 
 def test_windows_ssh_handoff_rejects_live_bootstrap_key(monkeypatch):
     monkeypatch.setattr(
-        'vmocs.launch._ssh_key_authenticates',
-        MagicMock(side_effect=(True, True)))
+        'vmocs.launch._ssh_key_authentication_result',
+        MagicMock(side_effect=(_SSH_AUTHENTICATED, _SSH_AUTHENTICATED)))
 
     with pytest.raises(HypervisorError, match='bootstrap SSH key is still accepted'):
         _verify_windows_ssh_handoff(
             '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant',
             '/runtime/ssh_known_hosts')
+
+
+def test_windows_ssh_handoff_fails_closed_on_indeterminate_bootstrap_probe(
+        monkeypatch):
+    probe = MagicMock(side_effect=(
+        _SSH_AUTHENTICATED, _SSH_INDETERMINATE, _SSH_AUTHENTICATED))
+    monkeypatch.setattr(
+        'vmocs.launch._ssh_key_authentication_result', probe)
+
+    with pytest.raises(HypervisorError, match='revocation could not be proven'):
+        _verify_windows_ssh_handoff(
+            '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant',
+            '/runtime/ssh_known_hosts')
+
+    assert probe.call_count == 2
 
 
 def test_metadata_write_can_tolerate_removed_runtime(tmp_path):
@@ -358,6 +510,18 @@ def test_per_launch_ssh_key_provenance(
         insert_key, using_snapshot, boot_mode, expected):
     assert _is_per_launch_ssh_key(
         insert_key, using_snapshot, boot_mode) is expected
+
+
+@pytest.mark.parametrize(
+    'host_user,secure_windows_handoff,expected', (
+        (None, False, False),
+        ({'name': 'submitter'}, False, True),
+        (None, True, True),
+    ))
+def test_authenticated_readiness_is_limited_to_identity_bound_launches(
+        host_user, secure_windows_handoff, expected):
+    assert _requires_authenticated_ssh_readiness(
+        host_user, secure_windows_handoff) is expected
 
 
 def test_windows_forwarding_rejects_cloud_init_snapshot_before_runtime(

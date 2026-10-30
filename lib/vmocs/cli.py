@@ -16,7 +16,6 @@ from .config import Config
 from .templates import TemplateConfig
 from .launch import (
     _graceful_shutdown,
-    _ssh_identity_options,
     _write_metadata,
     is_vm_stopping,
     launch_vm,
@@ -360,7 +359,7 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
         # subprocess (not execvp) so we return here when the session ends
         subprocess.call([
             'ssh',
-            *_ssh_identity_options(meta['key_path']),
+            '-i', meta['key_path'],
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             '-p', str(meta['ssh_port']),

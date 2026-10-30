@@ -56,12 +56,11 @@ def test_build_ssh_command_preserves_remote_arguments():
         _meta(), ('bash', '-c', 'printf "%s\\n" "$1"', 'bash', 'hello world'))
 
     assert argv[0] == 'ssh'
-    assert argv[argv.index('-F') + 1] == '/dev/null'
-    assert 'IdentitiesOnly=yes' in argv
-    assert 'IdentityAgent=none' in argv
-    assert 'CertificateFile=none' in argv
-    assert 'ControlMaster=no' in argv
-    assert 'ControlPath=none' in argv
+    assert argv[argv.index('-i') + 1] == '/tmp/vmocs/42/id_ed25519'
+    assert '-F' not in argv
+    assert 'IdentitiesOnly=yes' not in argv
+    assert 'IdentityAgent=none' not in argv
+    assert 'CertificateFile=none' not in argv
     assert '-T' in argv
     assert '-tt' not in argv
     assert argv[-2] == 'ubuntu@127.0.0.1'
@@ -86,6 +85,12 @@ def test_build_ssh_command_uses_windows_command_line_without_exec():
                'Write-Output "Hello from Windows"'), tty=True)
 
     assert '-tt' in argv
+    assert argv[argv.index('-F') + 1] == '/etc/ssh/ssh_config'
+    assert 'IdentitiesOnly=yes' in argv
+    assert 'IdentityAgent=none' in argv
+    assert 'CertificateFile=none' in argv
+    assert 'ControlMaster=no' in argv
+    assert 'ControlPath=none' in argv
     assert argv[-1] == (
         'powershell.exe -NoLogo -Command '
         '"Write-Output \\"Hello from Windows\\""')

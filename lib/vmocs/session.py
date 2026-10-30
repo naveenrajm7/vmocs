@@ -317,7 +317,11 @@ def _ssh_base_command(meta, tty=False):
         '-o', 'ServerAliveCountMax=3',
     ]
     if meta.get('key_path'):
-        argv += _ssh_identity_options(meta['key_path'])
+        isolated_identity = bool(
+            meta.get('ssh_command_style') == 'windows'
+            and meta.get('secure_ssh_handoff_verified'))
+        argv += _ssh_identity_options(
+            meta['key_path'], isolated=isolated_identity)
     argv += ['-tt' if tty else '-T']
     argv += [
         '-p', str(meta['ssh_port']),

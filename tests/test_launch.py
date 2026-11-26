@@ -660,6 +660,21 @@ def test_windows_forwarding_rejects_cloud_init_snapshot_before_runtime(
     assert not (tmp_path / 'runtime').exists()
 
 
+def test_launch_rejects_unusable_ssh_key_before_runtime(tmp_path):
+    key = tmp_path / 'shared_key'
+    key.write_text('PRIVATE KEY\n')
+    key.chmod(0o644)
+    template = SimpleNamespace(
+        snapshot=None, boot_mode='vagrant', insert_key=False,
+        ssh_command_style='posix', ssh_key=str(key))
+    cfg = SimpleNamespace(runtime_dir=str(tmp_path / 'runtime'))
+
+    with pytest.raises(HypervisorError, match='group or world permission'):
+        launch_vm(cfg, template, 2, 2048, job_id=78)
+
+    assert not (tmp_path / 'runtime').exists()
+
+
 def test_launch_rejects_save_when_checkpoint_is_blocked(tmp_path):
     with pytest.raises(HypervisorError, match='checkpoint is disabled'):
         launch_vm(

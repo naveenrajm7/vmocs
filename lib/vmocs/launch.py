@@ -678,6 +678,10 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         raise HypervisorError(
             'Windows environment forwarding requires a fresh per-launch '
             'SSH key and does not support cloud-init memory snapshots')
+    if not template.insert_key and template.ssh_key:
+        # Checked with the other template validations so an unusable key
+        # leaves no runtime directory or disk overlay behind.
+        _check_template_ssh_key(template.ssh_key)
 
     _ensure_runtime_base(cfg.runtime_dir)
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
@@ -732,8 +736,6 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         # Mirrors Vagrant's config.ssh.insert_key = false:
         # use the pre-installed key from the image, no ephemeral keypair needed.
         key_path = template.ssh_key  # None is fine — user relies on their own SSH config
-        if key_path:
-            _check_template_ssh_key(key_path)
         cloud_init_iso = None
     elif using_snapshot and boot_mode == 'cloud-init':
         key_path = os.path.join(snap_dir, 'id_ed25519')

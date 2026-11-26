@@ -27,7 +27,7 @@ from .checkpoint import (
 from .error import HypervisorError
 from .image import VMImage
 from .hypervisor import build_qemu_cmdline, _make_cloud_init_iso, _find_free_port
-from .keys import VAGRANT_KEY
+from .keys import vagrant_key_path
 from .monitor import wait_for_monitor
 from .sidecars import (
     SidecarManager,
@@ -41,6 +41,7 @@ from .sidecars import (
 _SSH_AUTHENTICATED = 'authenticated'
 _SSH_REJECTED = 'rejected'
 _SSH_INDETERMINATE = 'indeterminate'
+_SSH_KEY_UNUSABLE = 'key-unusable'
 _SYSTEM_SSH_CONFIG = '/etc/ssh/ssh_config'
 
 
@@ -117,6 +118,55 @@ def generate_ssh_keypair(runtime_dir):
     return key_path, pubkey
 
 
+def _ensure_runtime_base(base_dir):
+    """Make the shared runtime base usable by every user on the node.
+
+    os.makedirs() applies its mode to the leaf only, so the first user to
+    launch would otherwise create the base with the default 0755 and own it,
+    and every later user would fail to create their own job directory under
+    it. Sticky 1777 matches /tmp: anyone can add an entry, nobody can remove
+    another user's. The per-job directories below stay 0700 and private.
+    """
+    os.makedirs(base_dir, mode=0o1777, exist_ok=True)
+    try:
+        # makedirs() is subject to umask, and a base created by an older
+        # vmocs is still 0755; chmod repairs both. It only succeeds for the
+        # owner, which is fine: if another user already widened the base
+        # there is nothing to repair, and if they did not, the per-job
+        # mkdir below reports the real failure.
+        os.chmod(base_dir, 0o1777)
+    except OSError:
+        pass
+
+
+def _check_template_ssh_key(key_path):
+    """Fail before QEMU starts when OpenSSH will refuse the template's key.
+
+    Both failures below leave the key unoffered, so waiting for the guest
+    cannot help: without this the launch retries for the whole ssh-timeout
+    while holding the allocation.
+    """
+    if not os.path.exists(key_path):
+        raise HypervisorError(f'ssh-key {key_path!r} does not exist')
+    if not os.access(key_path, os.R_OK):
+        raise HypervisorError(
+            f'ssh-key {key_path!r} is not readable by the current user; '
+            'a shared key must be readable by everyone who launches this '
+            'template (root-owned mode 0644 works for owner and non-owner '
+            'alike)')
+    info = os.stat(key_path)
+    if info.st_uid == os.geteuid() and info.st_mode & 0o077:
+        # Mirrors OpenSSH sshkey_perm_ok(), which only checks the mode when
+        # the caller owns the file. A shared 0644 key therefore works for
+        # everyone except the user who owns it.
+        raise HypervisorError(
+            f'ssh-key {key_path!r} is owned by the current user with mode '
+            f'{info.st_mode & 0o777:04o}; OpenSSH ignores a private key whose '
+            'owner leaves group or world permission bits set. Use mode 0600, '
+            'or have a third party such as root own the shared key with '
+            'mode 0644')
+
+
 def _is_per_launch_ssh_key(insert_key, using_snapshot, boot_mode):
     """Return whether this launch creates and installs a fresh SSH key."""
     return bool(
@@ -163,6 +213,23 @@ def _ssh_identity_options(key_path, isolated=False):
     ]
 
 
+def _ssh_key_load_failure(diagnostics, key_path):
+    """Return the diagnostic proving OpenSSH could not load KEY_PATH.
+
+    Two distinct causes produce this, and both are permanent: a key the
+    caller cannot read ('Permission denied') and a key the caller owns with
+    group/world bits set, which OpenSSH refuses ('bad permissions').
+    """
+    load_failure = re.compile(
+        rf'Load key "{re.escape(key_path)}": '
+        r'(Permission denied|bad permissions)$')
+    for diagnostic in diagnostics:
+        text = diagnostic.strip()
+        if load_failure.match(text):
+            return text
+    return None
+
+
 def _ssh_key_authentication_result(
         host, port, key_path, ssh_user='root', known_hosts_path=None,
         timeout=10, isolated_identity=False):
@@ -193,6 +260,11 @@ def _ssh_key_authentication_result(
     if isinstance(stderr, bytes):
         stderr = stderr.decode('utf-8', errors='replace')
     diagnostics = stderr.splitlines()
+    if _ssh_key_load_failure(diagnostics, key_path):
+        # OpenSSH never offered the key, so no amount of waiting for the guest
+        # will change the outcome.  Report it as terminal rather than letting
+        # the caller retry until ssh-timeout expires.
+        return _SSH_KEY_UNUSABLE
     terminal_diagnostic = diagnostics[-1].strip() if diagnostics else ''
     denied = re.fullmatch(
         rf'{re.escape(ssh_user)}@{re.escape(host)}: '
@@ -220,16 +292,6 @@ def _ssh_key_authentication_result(
     return _SSH_INDETERMINATE
 
 
-def _ssh_key_authenticates(host, port, key_path, ssh_user='root',
-                           known_hosts_path=None, timeout=10,
-                           isolated_identity=False):
-    """Return whether KEY_PATH authenticates; indeterminate failures are false."""
-    return _ssh_key_authentication_result(
-        host, port, key_path, ssh_user,
-        known_hosts_path=known_hosts_path, timeout=timeout,
-        isolated_identity=isolated_identity) == _SSH_AUTHENTICATED
-
-
 def _verify_windows_ssh_handoff(host, port, ephemeral_key_path,
                                 ssh_user, known_hosts_path):
     """Prove new-key success, bootstrap-key failure, then new-key success."""
@@ -241,7 +303,7 @@ def _verify_windows_ssh_handoff(host, port, ephemeral_key_path,
     if probe(ephemeral_key_path) != _SSH_AUTHENTICATED:
         raise HypervisorError(
             'Windows ephemeral SSH key could not be verified after reboot')
-    bootstrap_result = probe(VAGRANT_KEY)
+    bootstrap_result = probe(vagrant_key_path())
     if bootstrap_result == _SSH_AUTHENTICATED:
         raise HypervisorError(
             'Windows bootstrap SSH key is still accepted after rotation')
@@ -392,7 +454,7 @@ def _rotate_windows_vagrant_key(host, port, pubkey, timeout,
         raise HypervisorError(
             'Windows Vagrant key rotation requires a QMP ordering barrier')
     command = [
-        'ssh', *_ssh_identity_options(VAGRANT_KEY, isolated=True),
+        'ssh', *_ssh_identity_options(vagrant_key_path(), isolated=True),
         *_ssh_host_key_options(known_hosts_path),
         '-o', 'BatchMode=yes',
         '-o', 'ConnectTimeout=2',
@@ -517,7 +579,7 @@ def _rotate_vagrant_key(host, port, pubkey, timeout, ssh_user='vagrant',
         while time.monotonic() < deadline:
             ret = subprocess.call(
                 ['scp',
-                 *_ssh_identity_options(VAGRANT_KEY),
+                 *_ssh_identity_options(vagrant_key_path()),
                  *_ssh_host_key_options(known_hosts_path),
                  '-o', 'ConnectTimeout=2',
                  '-P', str(port),
@@ -546,12 +608,22 @@ def wait_for_ssh(host, port, key_path, timeout, ssh_user='root',
                     if not authenticate:
                         return True
                     remaining = max(0.1, deadline - time.monotonic())
-                    if key_path and _ssh_key_authenticates(
+                    if key_path:
+                        result = _ssh_key_authentication_result(
                             host, port, key_path, ssh_user,
                             known_hosts_path=known_hosts_path,
                             timeout=min(10, remaining),
-                            isolated_identity=isolated_identity):
-                        return True
+                            isolated_identity=isolated_identity)
+                        if result == _SSH_AUTHENTICATED:
+                            return True
+                        if result == _SSH_KEY_UNUSABLE:
+                            raise HypervisorError(
+                                f'OpenSSH cannot load ssh-key {key_path!r}: '
+                                'it is unreadable by the current user, or '
+                                'owned by them with group/world permissions. '
+                                'Use mode 0600 for a private key, or have a '
+                                'third party such as root own a shared key '
+                                'with mode 0644')
         except OSError:
             pass
         time.sleep(2)
@@ -607,6 +679,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
             'Windows environment forwarding requires a fresh per-launch '
             'SSH key and does not support cloud-init memory snapshots')
 
+    _ensure_runtime_base(cfg.runtime_dir)
     runtime_dir = os.path.join(cfg.runtime_dir, str(job_id))
     os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
     if os.path.exists(os.path.join(runtime_dir, 'vm.json')):
@@ -659,6 +732,8 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         # Mirrors Vagrant's config.ssh.insert_key = false:
         # use the pre-installed key from the image, no ephemeral keypair needed.
         key_path = template.ssh_key  # None is fine — user relies on their own SSH config
+        if key_path:
+            _check_template_ssh_key(key_path)
         cloud_init_iso = None
     elif using_snapshot and boot_mode == 'cloud-init':
         key_path = os.path.join(snap_dir, 'id_ed25519')

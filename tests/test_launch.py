@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -9,12 +10,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from vmocs.error import HypervisorError
-from vmocs.keys import VAGRANT_KEY
+from vmocs.keys import vagrant_key_path
 from vmocs.launch import (
     _SSH_AUTHENTICATED,
     _SSH_INDETERMINATE,
+    _SSH_KEY_UNUSABLE,
     _SSH_REJECTED,
     _capture_ssh_host_keys,
+    _check_template_ssh_key,
+    _ensure_runtime_base,
     _is_guest_reboot_qmp_event,
     _is_host_reset_qmp_event,
     _is_per_launch_ssh_key,
@@ -22,7 +26,6 @@ from vmocs.launch import (
     _rotate_vagrant_key,
     _rotate_windows_vagrant_key,
     _ssh_key_authentication_result,
-    _ssh_key_authenticates,
     _verify_windows_ssh_handoff,
     launch_vm,
     _write_metadata,
@@ -43,13 +46,13 @@ class _BannerSocket:
 
 
 def test_authenticated_ssh_readiness_retries_login(monkeypatch):
-    statuses = iter([False, True])
+    statuses = iter([_SSH_INDETERMINATE, _SSH_AUTHENTICATED])
     calls = []
     monkeypatch.setattr(
         'vmocs.launch.socket.create_connection',
         lambda *args, **kwargs: _BannerSocket())
     monkeypatch.setattr(
-        'vmocs.launch._ssh_key_authenticates',
+        'vmocs.launch._ssh_key_authentication_result',
         lambda *args, **kwargs: calls.append((args, kwargs)) or next(statuses))
     monkeypatch.setattr('vmocs.launch.time.sleep', lambda _seconds: None)
 
@@ -67,8 +70,9 @@ def test_authenticated_ssh_readiness_uses_pinned_host_key(monkeypatch):
         'vmocs.launch.socket.create_connection',
         lambda *args, **kwargs: _BannerSocket())
     monkeypatch.setattr(
-        'vmocs.launch._ssh_key_authenticates',
-        lambda *args, **kwargs: calls.append((args, kwargs)) or True)
+        'vmocs.launch._ssh_key_authentication_result',
+        lambda *args, **kwargs: calls.append((args, kwargs))
+        or _SSH_AUTHENTICATED)
 
     assert wait_for_ssh(
         '127.0.0.1', 60222, '/tmp/key', 1,
@@ -82,7 +86,7 @@ def test_banner_only_ssh_readiness_does_not_attempt_login(monkeypatch):
         'vmocs.launch.socket.create_connection',
         lambda *args, **kwargs: _BannerSocket())
     monkeypatch.setattr(
-        'vmocs.launch._ssh_key_authenticates', authenticate)
+        'vmocs.launch._ssh_key_authentication_result', authenticate)
 
     assert wait_for_ssh('127.0.0.1', 60222, '/tmp/key', 1)
     authenticate.assert_not_called()
@@ -98,10 +102,10 @@ def test_ssh_key_authentication_uses_only_the_requested_identity(monkeypatch):
 
     monkeypatch.setattr('vmocs.launch.subprocess.run', fake_run)
 
-    assert _ssh_key_authenticates(
+    assert _ssh_key_authentication_result(
         '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant',
         known_hosts_path='/runtime/ssh_known_hosts',
-        isolated_identity=True)
+        isolated_identity=True) == _SSH_AUTHENTICATED
 
     argv = captured['argv']
     assert argv[:4] == ['ssh', '-vvv', '-F', '/etc/ssh/ssh_config']
@@ -129,8 +133,9 @@ def test_ssh_key_authentication_preserves_legacy_config_by_default(
 
     monkeypatch.setattr('vmocs.launch.subprocess.run', fake_run)
 
-    assert _ssh_key_authenticates(
-        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant')
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_AUTHENTICATED)
     assert captured['argv'][:4] == [
         'ssh', '-vvv', '-i', '/runtime/id_ed25519']
     assert '-F' not in captured['argv']
@@ -199,6 +204,119 @@ def test_ssh_key_authentication_classifies_start_and_timeout_errors(
             _SSH_INDETERMINATE)
 
 
+@pytest.mark.parametrize('load_failure', (
+    b'Load key "/runtime/id_ed25519": Permission denied\n',
+    b'Load key "/runtime/id_ed25519": bad permissions\n',
+))
+def test_ssh_key_authentication_classifies_unloadable_keys(
+        monkeypatch, load_failure):
+    stderr = load_failure + (
+        b'vagrant@127.0.0.1: Permission denied '
+        b'(publickey,password,keyboard-interactive).\n')
+    monkeypatch.setattr(
+        'vmocs.launch.subprocess.run',
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=255, stderr=stderr))
+
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_KEY_UNUSABLE)
+
+
+def test_ssh_key_authentication_ignores_load_failure_for_another_key(
+        monkeypatch):
+    stderr = (
+        b'Load key "/runtime/other_key": Permission denied\n'
+        b'vagrant@127.0.0.1: Permission denied (publickey).\n')
+    monkeypatch.setattr(
+        'vmocs.launch.subprocess.run',
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=255, stderr=stderr))
+
+    assert _ssh_key_authentication_result(
+        '127.0.0.1', 60222, '/runtime/id_ed25519', 'vagrant') == (
+            _SSH_INDETERMINATE)
+
+
+def test_authenticated_ssh_readiness_aborts_on_unusable_key(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        'vmocs.launch.socket.create_connection',
+        lambda *args, **kwargs: _BannerSocket())
+    monkeypatch.setattr(
+        'vmocs.launch._ssh_key_authentication_result',
+        lambda *args, **kwargs: calls.append(args) or _SSH_KEY_UNUSABLE)
+    monkeypatch.setattr('vmocs.launch.time.sleep', lambda _seconds: None)
+
+    with pytest.raises(HypervisorError, match='cannot load ssh-key'):
+        wait_for_ssh(
+            '127.0.0.1', 60222, '/tmp/key', 1800, authenticate=True)
+    assert len(calls) == 1
+
+
+def test_template_ssh_key_must_exist(tmp_path):
+    with pytest.raises(HypervisorError, match='does not exist'):
+        _check_template_ssh_key(str(tmp_path / 'absent'))
+
+
+def test_template_ssh_key_rejects_owner_readable_by_others(tmp_path):
+    key = tmp_path / 'shared_key'
+    key.write_text('PRIVATE KEY\n')
+    key.chmod(0o644)
+
+    with pytest.raises(HypervisorError, match='group or world permission'):
+        _check_template_ssh_key(str(key))
+
+
+def test_template_ssh_key_accepts_private_mode(tmp_path):
+    key = tmp_path / 'private_key'
+    key.write_text('PRIVATE KEY\n')
+    key.chmod(0o600)
+
+    _check_template_ssh_key(str(key))
+
+
+def test_template_ssh_key_accepts_world_readable_key_owned_elsewhere(
+        monkeypatch, tmp_path):
+    """The only mode that works for owner and non-owner alike."""
+    key = tmp_path / 'shared_key'
+    key.write_text('PRIVATE KEY\n')
+    key.chmod(0o644)
+    monkeypatch.setattr('vmocs.launch.os.geteuid', lambda: os.stat(key).st_uid + 1)
+
+    _check_template_ssh_key(str(key))
+
+
+def test_runtime_base_is_shared_and_sticky(tmp_path):
+    base = tmp_path / 'vmocs'
+
+    _ensure_runtime_base(str(base))
+
+    assert base.stat().st_mode & 0o7777 == 0o1777
+
+
+def test_runtime_base_repairs_a_base_left_private_by_an_older_launch(tmp_path):
+    base = tmp_path / 'vmocs'
+    base.mkdir(mode=0o755)
+
+    _ensure_runtime_base(str(base))
+
+    assert base.stat().st_mode & 0o7777 == 0o1777
+
+
+def test_runtime_base_tolerates_a_base_owned_by_another_user(
+        monkeypatch, tmp_path):
+    base = tmp_path / 'vmocs'
+    base.mkdir(mode=0o1777)
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError('not the owner')
+
+    monkeypatch.setattr('vmocs.launch.os.chmod', refuse)
+
+    _ensure_runtime_base(str(base))
+
+
 def test_capture_ssh_host_keys_writes_private_pin(monkeypatch, tmp_path):
     line = b'[127.0.0.1]:60222 ssh-ed25519 AAAATESTKEY\n'
     monkeypatch.setattr(
@@ -228,7 +346,7 @@ def test_posix_vagrant_rotation_preserves_legacy_ssh_configuration(
     _rotate_vagrant_key(
         '127.0.0.1', 60222, 'ssh-ed25519 AAAATEST generated@test', 1)
 
-    assert captured['argv'][:3] == ['scp', '-i', VAGRANT_KEY]
+    assert captured['argv'][:3] == ['scp', '-i', vagrant_key_path()]
     assert '-F' not in captured['argv']
     assert 'IdentitiesOnly=yes' not in captured['argv']
     assert 'BatchMode=yes' not in captured['argv']
@@ -460,7 +578,7 @@ def test_windows_ssh_handoff_checks_new_old_new(monkeypatch):
 
     assert [call[0][2] for call in calls] == [
         '/runtime/id_ed25519',
-        VAGRANT_KEY,
+        vagrant_key_path(),
         '/runtime/id_ed25519',
     ]
     assert all(call[1]['isolated_identity'] for call in calls)

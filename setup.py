@@ -20,6 +20,7 @@ setup(
     license='GPL-3.0-or-later',
     package_dir={'': 'lib'},
     packages=find_packages(where='lib'),
+    package_data={'vmocs': ['keys/*']},
     python_requires='>=3.8',
     install_requires=[
         'click',

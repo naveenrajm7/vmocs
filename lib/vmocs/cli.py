@@ -285,6 +285,10 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
     click.echo(f'VM ready  job_id={meta["job_id"]}  '
                f'ssh -i {meta["key_path"]} -p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')
+    for forward in meta.get('host_forwards') or []:
+        click.echo(f'  forward  {forward["protocol"]} '
+                   f'{forward["host_address"]}:{forward["host_port"]} '
+                   f'-> guest :{forward["guest_port"]}')
 
     if attach == 'none':
         remove_runtime = False

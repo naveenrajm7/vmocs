@@ -246,13 +246,19 @@ Fields
    device.  Each entry uses the QEMU syntax
    ``protocol:hostaddr:hostport-:guestport``.  This legacy field is equivalent
    to ``network.hostfwd``.  Bind sensitive services to ``127.0.0.1``; an empty
-   host address exposes the port on every host interface.  Default: ``[]``.
+   host address exposes the port on every host interface, and vmocs logs a
+   warning when it finds one.  Default: ``[]``.
+
+   Write the host port as ``{alloc}`` to have vmocs pick a free port per
+   launch, as it already does for the management SSH forward.  A fixed host
+   port allows only one VM per node, because the second launch cannot bind
+   it.  See ``network.hostfwd`` below.
 
    Example::
 
       extra-hostfwd:
-        - tcp:127.0.0.1:3389-:3389
-        - tcp:127.0.0.1:5985-:5985
+        - tcp:127.0.0.1:{alloc}-:3389
+        - tcp:127.0.0.1:{alloc}-:5985
 
 .. describe:: network
 
@@ -278,7 +284,26 @@ Fields
    ``hostfwd``
      List of QEMU inbound forwarding rules.  vmocs independently adds a
      loopback-only SSH rule for guest management.  Bind additional rules to
-     ``127.0.0.1`` unless remote access is intentional.
+     ``127.0.0.1`` unless remote access is intentional; an empty host address
+     binds every interface and is reported as a warning at launch.
+
+     The host port may be written as ``{alloc}``, in which case vmocs picks a
+     free port from ``network.ssh-port-range`` for each launch.  Without it a
+     fixed host port limits the template to one VM per node: the second
+     launch gets its own SSH port but QEMU then refuses to start, which
+     previously surfaced only as a QMP socket timeout.  vmocs now checks every
+     fixed port before starting QEMU and names the conflicting one.
+
+     Allocated ports are printed by ``vmocs launch`` and recorded under
+     ``host_forwards`` in the job's ``vm.json``::
+
+        network:
+          hostfwd:
+            - tcp:127.0.0.1:{alloc}-:3389
+
+        $ vmocs launch windows-runner
+        VM ready  job_id=12345  ssh -i ... -p 60222 vagrant@127.0.0.1
+          forward  tcp 127.0.0.1:60223 -> guest :3389
 
    ``guestfwd``
      List of QEMU outbound TCP forwarding rules.  With ``restrict: true``,

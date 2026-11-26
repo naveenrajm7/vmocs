@@ -26,7 +26,12 @@ from .checkpoint import (
 )
 from .error import HypervisorError
 from .image import VMImage
-from .hypervisor import build_qemu_cmdline, _make_cloud_init_iso, _find_free_port
+from .hypervisor import (
+    build_qemu_cmdline,
+    resolve_host_forwards,
+    _make_cloud_init_iso,
+    _find_free_port,
+)
 from .keys import VAGRANT_KEY
 from .monitor import wait_for_monitor
 from .sidecars import (
@@ -694,6 +699,12 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         raise HypervisorError("template 'network' must be a mapping")
     network.update(template_network)
 
+    # 3b. Host forwards: give every entry a concrete free port before QEMU
+    # starts, so a template with extra forwards is not limited to one VM
+    # per node and a genuine conflict is named instead of timing out on QMP.
+    network, extra_hostfwd, host_forwards = resolve_host_forwards(
+        network, template.extra_hostfwd, port_range, reserved={ssh_port})
+
     # UEFI NVRAM: copy vars template into runtime_dir so each job gets an isolated store
     firmware_vars = None
     if template.firmware:
@@ -727,6 +738,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         extra_disks=template.extra_disks or [],
         sidecar_plans=sidecar_plans,
         network=network,
+        extra_hostfwd=extra_hostfwd,
         supervised=supervised,
     )
 
@@ -737,6 +749,7 @@ def launch_vm(cfg, template, cores, memory_mb, job_id=None, pci_devices=(),
         'pid': None,
         'boot_mode': boot_mode,
         'ssh_port': ssh_port,
+        'host_forwards': host_forwards,
         'ssh_user': ssh_user,
         'ssh_command_style': template.ssh_command_style,
         'key_path': key_path,

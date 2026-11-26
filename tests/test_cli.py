@@ -166,3 +166,24 @@ def test_blocking_launch_accepts_clean_sidecar_exit_as_qemu_exits(monkeypatch):
     manager.failure.return_value = ('swtpm', 0)
 
     cli._block_until_exit(pid, '/tmp/qmp.sock', manager)
+
+
+def test_launch_reports_the_host_ports_it_allocated(monkeypatch):
+    from click.testing import CliRunner
+
+    template = SimpleNamespace(emulated_devices=None)
+    monkeypatch.setattr(cli, '_load', lambda _path: (object(), {'vm': template}))
+    monkeypatch.setattr(cli, 'launch_vm', lambda *args, **kwargs: {
+        'job_id': 7, 'key_path': '/runtime/id_ed25519', 'ssh_port': 60222,
+        'ssh_user': 'vagrant', 'pid': 123, 'qmp_socket': '/runtime/qmp.sock',
+        'runtime_dir': '/runtime',
+        'host_forwards': [
+            {'protocol': 'tcp', 'host_address': '127.0.0.1',
+             'host_port': 60223, 'guest_port': 3389},
+        ],
+    })
+
+    result = CliRunner().invoke(cli.cli, ['launch', 'vm', '--detach'])
+
+    assert result.exit_code == 0
+    assert 'forward  tcp 127.0.0.1:60223 -> guest :3389' in result.output

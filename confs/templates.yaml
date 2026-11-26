@@ -74,8 +74,10 @@ windows-packer:
   pci-root-port: true
   network:
     hostfwd:
-      - tcp:127.0.0.1:3389-:3389
-      - tcp:127.0.0.1:5985-:5985
+      # {alloc} picks a free host port per launch, so more than one of these
+      # VMs can run on a node. vmocs prints the mapping when the VM is ready.
+      - tcp:127.0.0.1:{alloc}-:3389
+      - tcp:127.0.0.1:{alloc}-:5985
   mount-points:
     workspace:
       path: /home/user

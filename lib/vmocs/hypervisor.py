@@ -15,6 +15,7 @@
 
 import logging
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -289,16 +290,34 @@ def _mount_cmdline(mount_points):
 # Free SSH port allocation for user-mode networking
 # ---------------------------------------------------------------------------
 
-def _find_free_port(port_range):
+def _host_port_is_free(host_address, port):
+    """Return whether PORT can be bound on HOST_ADDRESS, as QEMU will."""
+    if host_address.startswith('['):
+        # IPv6 literal: QEMU accepts it but a probe here would need AF_INET6
+        # plumbing for a case no template uses. Let QEMU report the conflict.
+        return True
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host_address, port))
+        except OSError:
+            return False
+    return True
+
+
+def _find_free_port(port_range, exclude=()):
+    """Return a free port in PORT_RANGE, skipping EXCLUDE.
+
+    The probe socket is closed before the port is used, so a caller taking
+    several ports in one launch must pass the ones it already holds: they
+    look free again the moment the probe closes.
+    """
     lo, hi = port_range
     for port in range(lo, hi):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind(('', port))
-                return port
-            except OSError:
-                continue
+        if port in exclude:
+            continue
+        if _host_port_is_free('', port):
+            return port
     raise HypervisorError(f'no free port in range {lo}-{hi}')
 
 
@@ -308,6 +327,96 @@ def _validated_network_mapping(network):
     if not isinstance(network, dict):
         raise HypervisorError("template 'network' must be a mapping")
     return network
+
+
+# ---------------------------------------------------------------------------
+# Host forward resolution
+# ---------------------------------------------------------------------------
+
+ALLOC_TOKEN = '{alloc}'
+
+_HOSTFWD_RE = re.compile(
+    r'^(?:(?P<proto>tcp|udp):)?'
+    r'(?P<hostaddr>\[[^\]]*\]|[^:]*):'
+    r'(?P<hostport>\d+|' + re.escape(ALLOC_TOKEN) + r')'
+    r'-(?P<guestaddr>\[[^\]]*\]|[^:]*):'
+    r'(?P<guestport>\d+)$')
+
+
+def _resolve_hostfwd(entry, setting, port_range, taken):
+    """Resolve one forward. Returns (entry, description) with a fixed port."""
+    match = _HOSTFWD_RE.match(entry)
+    if not match:
+        raise HypervisorError(
+            f'network.{setting} entry {entry!r} is not a valid host forward; '
+            'expected [tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport, '
+            f'where hostport may be {ALLOC_TOKEN} to have vmocs pick a free '
+            'port')
+    protocol = match.group('proto') or 'tcp'
+    host_address = match.group('hostaddr')
+    guest_port = int(match.group('guestport'))
+
+    if match.group('hostport') == ALLOC_TOKEN:
+        host_port = _find_free_port(port_range, exclude=taken)
+        entry = (f'{protocol}:{host_address}:{host_port}'
+                 f'-{match.group("guestaddr")}:{match.group("guestport")}')
+    else:
+        host_port = int(match.group('hostport'))
+        if host_port in taken or not _host_port_is_free(
+                host_address, host_port):
+            # QEMU's own failure here is a bare 'Could not set up host
+            # forwarding rule', surfacing only as a QMP socket timeout.
+            raise HypervisorError(
+                f'network.{setting} entry {entry!r} needs host port '
+                f'{host_port}, which is already in use on this node. Write '
+                f'the host port as {ALLOC_TOKEN} to have vmocs allocate a '
+                'free one per launch, so more than one VM can run here')
+
+    taken.add(host_port)
+    if not host_address:
+        logging.warning(
+            'network.%s entry %r binds every interface, so guest port %d is '
+            'reachable from outside this node; write the host address as '
+            '127.0.0.1 to keep it private', setting, entry, guest_port)
+    return entry, {
+        'protocol': protocol,
+        'host_address': host_address or '0.0.0.0',
+        'host_port': host_port,
+        'guest_port': guest_port,
+    }
+
+
+def resolve_host_forwards(network, extra_hostfwd, port_range, reserved=()):
+    """Give every host forward a concrete, free port before QEMU starts.
+
+    Only the SSH forward was allocated dynamically, so templates with static
+    extra forwards could run exactly one VM per node. Returns the network
+    mapping and extra-hostfwd list with every {alloc} replaced, plus a
+    description of the final mapping to record in vm.json.
+    """
+    network = _validated_network_mapping(network)
+    extra_hostfwd = list(extra_hostfwd or [])
+    if network.get('mode', 'user') != 'user':
+        # Only the SLIRP backend takes hostfwd; passt rejects it separately.
+        return network, extra_hostfwd, []
+
+    taken = set(reserved)
+    forwards = []
+    network = dict(network)
+    for setting, values in (('hostfwd', _network_string_list(network, 'hostfwd')),
+                            ('extra-hostfwd', extra_hostfwd)):
+        resolved = []
+        for entry in values:
+            entry, forward = _resolve_hostfwd(
+                entry, setting, port_range, taken)
+            resolved.append(entry)
+            forwards.append(forward)
+        if setting == 'hostfwd':
+            if resolved:
+                network['hostfwd'] = resolved
+        else:
+            extra_hostfwd = resolved
+    return network, extra_hostfwd, forwards
 
 
 def _network_string_list(network, name, allow_commas=False):
@@ -464,6 +573,7 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
                        extra_disks=(),
                        sidecar_plans=(),
                        network=None,
+                       extra_hostfwd=None,
                        supervised=False):
     """Build the full QEMU command line list.
 
@@ -585,8 +695,9 @@ def build_qemu_cmdline(qemu_bin, template, cores, memory_mb,
     # per-template policy are merged by the launcher.
     if network is None:
         network = getattr(template, 'network', {})
-    cmd += _network_cmdline(
-        network, ssh_port, getattr(template, 'extra_hostfwd', []))
+    if extra_hostfwd is None:
+        extra_hostfwd = getattr(template, 'extra_hostfwd', [])
+    cmd += _network_cmdline(network, ssh_port, extra_hostfwd)
 
     # Mount points
     if mount_points:

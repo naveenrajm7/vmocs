@@ -47,6 +47,14 @@ def _load(config_path=None):
     return cfg, tpls
 
 
+def _echo_host_forwards(meta):
+    """Report the host ports chosen for this launch, which vary per job."""
+    for forward in meta.get('host_forwards') or []:
+        click.echo(f'  forward  {forward["protocol"]} '
+                   f'{forward["host_address"]}:{forward["host_port"]} '
+                   f'-> guest :{forward["guest_port"]}')
+
+
 def _block_until_exit(qemu_pid, qmp_socket, sidecar_manager=None):
     """Install SIGTERM handler with ACPI-powerdown escalation, then waitpid.
 
@@ -285,6 +293,7 @@ def run(ctx, template_name, cores, memory, job_id, pci_devices, attach,
     click.echo(f'VM ready  job_id={meta["job_id"]}  '
                f'ssh -i {meta["key_path"]} -p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')
+    _echo_host_forwards(meta)
 
     if attach == 'none':
         remove_runtime = False
@@ -347,6 +356,7 @@ def launch(ctx, template_name, cores, memory, job_id, pci_devices, detach, open_
                f'ssh -i {meta["key_path"]} '
                f'-p {meta["ssh_port"]} '
                f'{meta["ssh_user"]}@127.0.0.1')
+    _echo_host_forwards(meta)
 
     qemu_pid    = meta['pid']
     qmp_socket  = meta['qmp_socket']
@@ -410,6 +420,7 @@ def vm_list(ctx):
         click.echo(f"job_id={meta['job_id']}  pid={meta['pid']}  "
                    f"template={meta['template']}  "
                    f"ssh_port={meta['ssh_port']}  status={alive}")
+        _echo_host_forwards(meta)
         found = True
 
     if not found:
